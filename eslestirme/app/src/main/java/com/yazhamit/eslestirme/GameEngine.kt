@@ -21,6 +21,10 @@ class GameEngine(private val context: Context, private val sceneView: SceneView,
     private var firstSelectedCard: Card? = null
     private var isProcessing = false
 
+    // Biz primitive olarak cube.glb ve uzerinde islem yapamadıgımız icin state ile oynayacagiz (Kullanici modeli degistirmeli).
+    // Android ViewNode renderable builder patterni 0.10.0'da kolayca desteklenmedigi veya signature degistigi icin ModelNode'da tutuyoruz
+    private val cardSymbols = listOf("★", "♥", "♦", "♣", "♠", "▲", "▼", "◆", "●", "■", "△", "▽", "◇", "○", "□")
+
     interface GameCallback {
         fun onScoreChanged(score: Int)
         fun onLevelChanged(level: Int)
@@ -35,23 +39,20 @@ class GameEngine(private val context: Context, private val sceneView: SceneView,
     }
 
     private fun loadLevel() {
-        // Clear previous cards
         cards.forEach { it.node?.destroy() }
         cards.clear()
 
         val cardCount = gameManager.getCardCountForLevel()
         val pairsCount = cardCount / 2
 
-        // Create pairs
         for (i in 0 until pairsCount) {
-            cards.add(Card(id = i * 2, pairId = i, colorIndex = i))
-            cards.add(Card(id = i * 2 + 1, pairId = i, colorIndex = i))
+            val symbol = cardSymbols[i % cardSymbols.size]
+            cards.add(Card(id = i * 2, pairId = i, symbol = symbol))
+            cards.add(Card(id = i * 2 + 1, pairId = i, symbol = symbol))
         }
 
-        // Shuffle cards
         cards.shuffle()
 
-        // Calculate grid
         val columns = ceil(sqrt(cardCount.toDouble())).toInt()
         val rows = ceil(cardCount.toDouble() / columns).toInt()
 
@@ -59,7 +60,6 @@ class GameEngine(private val context: Context, private val sceneView: SceneView,
         val startX = -(columns - 1) * spacing / 2f
         val startY = (rows - 1) * spacing / 2f
 
-        // Create 3D Nodes for cards
         CoroutineScope(Dispatchers.Main).launch {
             for (i in 0 until cards.size) {
                 val card = cards[i]
@@ -72,12 +72,10 @@ class GameEngine(private val context: Context, private val sceneView: SceneView,
 
                 card.startPosition = Position(x, y, z)
 
-                // Kutuyu asset içinden asenkron yüklüyoruz.
                 val modelNode = ModelNode(sceneView.engine).apply {
                     position = card.startPosition
                 }
 
-                // Dokunma olayı SceneView 0.10.0 icin: Node onTap metodu (x,y veya motion event doner, null da donebilir)
                 modelNode.onTap = { _, _ ->
                     onCardClicked(card)
                 }
@@ -87,6 +85,9 @@ class GameEngine(private val context: Context, private val sceneView: SceneView,
                         modelNode.loadModelGlbAsync(
                             glbFileLocation = "cube.glb"
                         )
+                        // TODO: SceneView 0.10.0'da bir modelin belli bir MaterialInstance'ina ulasip rengini degistirebilirsek
+                        // farkli sembolleri temsilen farkli renkler verecegiz. Aksi halde, kullanici modelleri
+                        // assets icine "card_0.glb", "card_1.glb" koymali. Biz mantik olarak "cube.glb" uzerinden isliyoruz.
                     } catch(e: Exception) {
                         e.printStackTrace()
                     }
@@ -123,17 +124,14 @@ class GameEngine(private val context: Context, private val sceneView: SceneView,
     private fun checkMatch(card1: Card, card2: Card) {
         isProcessing = true
         if (card1.pairId == card2.pairId) {
-            // Match found
             card1.isMatched = true
             card2.isMatched = true
             gameManager.addScore()
             callback.onScoreChanged(gameManager.score)
 
-            // Merge and move upwards animation
             animateMatch(card1, card2)
 
         } else {
-            // No match
             Handler(Looper.getMainLooper()).postDelayed({
                 card1.flip()
                 card2.flip()
@@ -150,7 +148,8 @@ class GameEngine(private val context: Context, private val sceneView: SceneView,
         val centerY = (card1.startPosition.y + card2.startPosition.y) / 2f
         val centerZ = (card1.startPosition.z + card2.startPosition.z) / 2f
 
-        val upY = centerY + 2.0f // Yukari hareket
+        val upY = centerY + 1.5f
+        val downZ = centerZ - 5f
 
         val animatorSet = AnimatorSet()
 
@@ -171,17 +170,28 @@ class GameEngine(private val context: Context, private val sceneView: SceneView,
         moveCenterAnimatorZ2.addUpdateListener { vala -> node2.position = Position(node2.position.x, node2.position.y, vala.animatedValue as Float) }
 
         val moveUpAnimator = ValueAnimator.ofFloat(centerY, upY)
+        val moveBackAnimator = ValueAnimator.ofFloat(centerZ, downZ)
+
         moveUpAnimator.addUpdateListener { vala ->
             val newY = vala.animatedValue as Float
-            node1.position = Position(centerX, newY, centerZ)
-            node2.position = Position(centerX, newY, centerZ)
+            node1.position = Position(node1.position.x, newY, node1.position.z)
+            node2.position = Position(node2.position.x, newY, node2.position.z)
+        }
+
+        moveBackAnimator.addUpdateListener { vala ->
+            val newZ = vala.animatedValue as Float
+            node1.position = Position(node1.position.x, node1.position.y, newZ)
+            node2.position = Position(node2.position.x, node2.position.y, newZ)
         }
 
         animatorSet.playTogether(moveCenterAnimatorX1, moveCenterAnimatorY1, moveCenterAnimatorZ1, moveCenterAnimatorX2, moveCenterAnimatorY2, moveCenterAnimatorZ2)
 
+        val moveOutSet = AnimatorSet()
+        moveOutSet.playTogether(moveUpAnimator, moveBackAnimator)
+
         val finalAnimatorSet = AnimatorSet()
-        finalAnimatorSet.playSequentially(animatorSet, moveUpAnimator)
-        finalAnimatorSet.duration = 500
+        finalAnimatorSet.playSequentially(animatorSet, moveOutSet)
+        finalAnimatorSet.duration = 400
 
         finalAnimatorSet.start()
 
@@ -190,13 +200,13 @@ class GameEngine(private val context: Context, private val sceneView: SceneView,
             card2.hide()
             checkLevelComplete()
             isProcessing = false
-        }, 1100)
+        }, 1000)
     }
 
     private fun checkLevelComplete() {
         if (cards.all { it.isMatched }) {
             gameManager.nextLevel()
-            if (gameManager.currentLevel > 14) { // Max level reached or custom win condition
+            if (gameManager.currentLevel > 14) {
                 callback.onGameFinished()
             } else {
                 callback.onLevelChanged(gameManager.currentLevel)

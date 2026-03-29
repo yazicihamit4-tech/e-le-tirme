@@ -1,11 +1,10 @@
 package com.yazhamit.eslestirme
 
 import io.github.sceneview.node.ModelNode
-import io.github.sceneview.node.Node
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 
-class Card(val id: Int, val pairId: Int, val colorIndex: Int) {
+class Card(val id: Int, val pairId: Int, val symbol: String) {
     var isFaceUp: Boolean = false
     var isMatched: Boolean = false
     var node: ModelNode? = null
@@ -13,11 +12,10 @@ class Card(val id: Int, val pairId: Int, val colorIndex: Int) {
 
     fun flip() {
         isFaceUp = !isFaceUp
+
         node?.let {
             if (isFaceUp) {
-                // Burada dönme veya model değiştirme animasyonu olmalı.
-                // ModelNode ile renkleri ayırt edemediğimiz için şimdilik loglarda ve state üzerinde ilerliyor.
-                // Gerçek senaryoda burada model değişir veya Material rengi güncellenir.
+                // Burada aslinda glb modelin sembol olan yuzunu dondurmesi gerekiyor.
                 it.rotation = Rotation(x = 0f, y = 180f, z = 0f)
             } else {
                 it.rotation = Rotation(x = 0f, y = 0f, z = 0f)
@@ -26,7 +24,6 @@ class Card(val id: Int, val pairId: Int, val colorIndex: Int) {
     }
 
     fun hide() {
-        // Hide card logic
         node?.isVisible = false
     }
 }
