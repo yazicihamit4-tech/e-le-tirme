@@ -4,16 +4,12 @@ plugins {
 
 android {
     namespace = "com.yazhamit.eslestirme"
-    compileSdk {
-        version = release(36) {
-            minorApiLevel = 1
-        }
-    }
+    compileSdk = 34
 
     defaultConfig {
         applicationId = "com.yazhamit.eslestirme"
         minSdk = 24
-        targetSdk = 36
+        targetSdk = 34
         versionCode = 1
         versionName = "1.1"
 
@@ -44,6 +40,4 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
-    // 3D modelleme ve görüntüleme için SceneView (Filament tabanlıdır)
-    implementation("io.github.sceneview:arsceneview:0.10.0")
 }

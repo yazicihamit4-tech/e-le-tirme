@@ -3,15 +3,15 @@ package com.yazhamit.eslestirme
 import android.os.Bundle
 import android.widget.TextView
 import android.widget.Toast
+import android.widget.FrameLayout
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import io.github.sceneview.SceneView
 
 class MainActivity : AppCompatActivity(), GameEngine.GameCallback {
 
-    private lateinit var sceneView: SceneView
+    private lateinit var gameBoard: FrameLayout
     private lateinit var levelTextView: TextView
     private lateinit var scoreTextView: TextView
     private lateinit var gameEngine: GameEngine
@@ -21,7 +21,7 @@ class MainActivity : AppCompatActivity(), GameEngine.GameCallback {
         enableEdgeToEdge()
         setContentView(R.layout.activity_main)
 
-        sceneView = findViewById(R.id.sceneView)
+        gameBoard = findViewById(R.id.gameBoard)
         levelTextView = findViewById(R.id.levelTextView)
         scoreTextView = findViewById(R.id.scoreTextView)
 
@@ -31,7 +31,7 @@ class MainActivity : AppCompatActivity(), GameEngine.GameCallback {
             insets
         }
 
-        gameEngine = GameEngine(this, sceneView, this)
+        gameEngine = GameEngine(this, gameBoard, this)
         gameEngine.startGame()
     }
 
