@@ -8,7 +8,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import io.github.sceneview.SceneView
-import io.github.sceneview.node.Node
 
 class MainActivity : AppCompatActivity(), GameEngine.GameCallback {
 
@@ -33,14 +32,6 @@ class MainActivity : AppCompatActivity(), GameEngine.GameCallback {
         }
 
         gameEngine = GameEngine(this, sceneView, this)
-
-        // Touch events for SceneView
-        sceneView.setOnTouchListener { _, event ->
-            // In a real application we map touch event to hitTest on nodes
-            // Simplified placeholder approach
-            true
-        }
-
         gameEngine.startGame()
     }
 

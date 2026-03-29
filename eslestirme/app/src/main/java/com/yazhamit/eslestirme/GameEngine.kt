@@ -55,7 +55,7 @@ class GameEngine(private val context: Context, private val sceneView: SceneView,
         val columns = ceil(sqrt(cardCount.toDouble())).toInt()
         val rows = ceil(cardCount.toDouble() / columns).toInt()
 
-        val spacing = 0.6f
+        val spacing = 1.2f
         val startX = -(columns - 1) * spacing / 2f
         val startY = (rows - 1) * spacing / 2f
 
@@ -68,13 +68,28 @@ class GameEngine(private val context: Context, private val sceneView: SceneView,
 
                 val x = startX + col * spacing
                 val y = startY - row * spacing
-                val z = -2.5f
+                val z = -6.0f
 
                 card.startPosition = Position(x, y, z)
 
-                // Placeholder using ModelNode
+                // Kutuyu asset içinden asenkron yüklüyoruz.
                 val modelNode = ModelNode(sceneView.engine).apply {
                     position = card.startPosition
+                }
+
+                // Dokunma olayı SceneView 0.10.0 icin: Node onTap metodu (x,y veya motion event doner, null da donebilir)
+                modelNode.onTap = { _, _ ->
+                    onCardClicked(card)
+                }
+
+                CoroutineScope(Dispatchers.Main).launch {
+                    try {
+                        modelNode.loadModelGlbAsync(
+                            glbFileLocation = "cube.glb"
+                        )
+                    } catch(e: Exception) {
+                        e.printStackTrace()
+                    }
                 }
 
                 card.node = modelNode
