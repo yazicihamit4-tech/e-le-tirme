@@ -19,23 +19,23 @@ class MainActivity : AppCompatActivity(), GameEngine.GameCallback {
     private lateinit var gameBoard: FrameLayout
     private lateinit var levelTextView: TextView
     private lateinit var scoreTextView: TextView
+    private lateinit var powerUpTextView: TextView
     private lateinit var soundButton: ImageView
     private lateinit var gameEngine: GameEngine
 
-    private var currentBgColor = Color.parseColor("#E3F2FD") // Baslangic rengi (Acik Mavi)
+    private var currentBgColor = Color.parseColor("#E3F2FD")
 
-    // Seviyelere gore farkli renk paletleri
     private val levelColors = listOf(
-        "#E3F2FD", // 1: Acik Mavi
-        "#F3E5F5", // 2: Acik Mor
-        "#E8F5E9", // 3: Acik Yesil
-        "#FFF3E0", // 4: Acik Turuncu
-        "#FFEBEE", // 5: Acik Pembe
-        "#E0F7FA", // 6: Mint
-        "#FFFDE7", // 7: Acik Turkuaz
-        "#FBE9E7", // 8: Acik Sari
-        "#EFEBE9", // 9: Acik Kahve
-        "#FAFAFA"  // 10: Neredeyse Beyaz
+        "#E3F2FD",
+        "#F3E5F5",
+        "#E8F5E9",
+        "#FFF3E0",
+        "#FFEBEE",
+        "#E0F7FA",
+        "#FFFDE7",
+        "#FBE9E7",
+        "#EFEBE9",
+        "#FAFAFA"
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,6 +48,7 @@ class MainActivity : AppCompatActivity(), GameEngine.GameCallback {
         levelTextView = findViewById(R.id.levelTextView)
         scoreTextView = findViewById(R.id.scoreTextView)
         soundButton = findViewById(R.id.soundButton)
+        powerUpTextView = findViewById(R.id.powerUpTextView)
 
         mainLayout.setBackgroundColor(currentBgColor)
 
@@ -58,6 +59,7 @@ class MainActivity : AppCompatActivity(), GameEngine.GameCallback {
         }
 
         gameEngine = GameEngine(this, gameBoard, this)
+        gameEngine.powerUpTextView = powerUpTextView
         gameEngine.startGame()
 
         soundButton.setOnClickListener {
@@ -78,13 +80,12 @@ class MainActivity : AppCompatActivity(), GameEngine.GameCallback {
     override fun onLevelChanged(level: Int) {
         levelTextView.text = "Level: $level"
 
-        // Arka plan rengini animasyonlu sekilde degistir
         val newColorStr = levelColors[(level - 1) % levelColors.size]
         val newColor = Color.parseColor(newColorStr)
 
         if (currentBgColor != newColor) {
             val colorAnimation = ValueAnimator.ofObject(ArgbEvaluator(), currentBgColor, newColor)
-            colorAnimation.duration = 1000 // 1 saniye icerisinde gecis yap
+            colorAnimation.duration = 1000
             colorAnimation.addUpdateListener { animator ->
                 mainLayout.setBackgroundColor(animator.animatedValue as Int)
             }

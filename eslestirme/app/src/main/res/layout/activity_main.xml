@@ -73,4 +73,23 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
+    <!-- Kombo ve Power-Up Yazısı -->
+    <TextView
+        android:id="@+id/powerUpTextView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="x2 KOMBO!"
+        android:textSize="48sp"
+        android:textStyle="bold"
+        android:textColor="#FFEB3B"
+        android:shadowColor="#FF5722"
+        android:shadowDx="4"
+        android:shadowDy="4"
+        android:shadowRadius="8"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>

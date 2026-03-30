@@ -15,11 +15,12 @@ class Card(context: Context, val cardId: Int, val pairId: Int, val symbol: Strin
 
     var isFaceUp: Boolean = false
     var isMatched: Boolean = false
+    var isPowerUp: Boolean = false
+    var powerUpType: String = "" // "RADAR" veya "BOMB"
 
     private val textView: TextView
 
     init {
-        // Kartın ön yüzü ve arka yüzü ayarları
         setBackgroundResource(R.drawable.card_back)
 
         textView = TextView(context).apply {
@@ -45,7 +46,11 @@ class Card(context: Context, val cardId: Int, val pairId: Int, val symbol: Strin
             override fun onAnimationEnd(animation: Animator) {
                 isFaceUp = !isFaceUp
                 if (isFaceUp) {
-                    setBackgroundResource(R.drawable.card_front)
+                    if (isPowerUp) {
+                        setBackgroundColor(Color.YELLOW) // Power-up arkaplani belli olsun
+                    } else {
+                        setBackgroundResource(R.drawable.card_front)
+                    }
                     textView.text = symbol
                 } else {
                     setBackgroundResource(R.drawable.card_back)
@@ -58,8 +63,42 @@ class Card(context: Context, val cardId: Int, val pairId: Int, val symbol: Strin
         flipOut.start()
     }
 
+    // Gözlemci (Radar) özelliği için anında gösterip geri kapatma
+    fun peek() {
+        if (isMatched || isFaceUp) return
+
+        val peekOut = ObjectAnimator.ofFloat(this, "rotationY", 0f, 90f).setDuration(150)
+        val peekIn = ObjectAnimator.ofFloat(this, "rotationY", -90f, 0f).setDuration(150)
+
+        val hideOut = ObjectAnimator.ofFloat(this, "rotationY", 0f, 90f).apply { startDelay = 1000; duration = 150 }
+        val hideIn = ObjectAnimator.ofFloat(this, "rotationY", -90f, 0f).setDuration(150)
+
+        peekOut.addListener(object : AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: Animator) {
+                setBackgroundResource(R.drawable.card_front)
+                textView.text = symbol
+                peekIn.start()
+            }
+        })
+
+        peekIn.addListener(object : AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: Animator) {
+                hideOut.start()
+            }
+        })
+
+        hideOut.addListener(object : AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: Animator) {
+                setBackgroundResource(R.drawable.card_back)
+                textView.text = ""
+                hideIn.start()
+            }
+        })
+
+        peekOut.start()
+    }
+
     fun animateMismatch(onEnd: (() -> Unit)? = null) {
-        // Sağa sola titreme (shake) animasyonu
         val animator = ObjectAnimator.ofFloat(this, "translationX", 0f, 20f, -20f, 20f, -20f, 10f, -10f, 0f)
         animator.duration = 400
         animator.addListener(object : AnimatorListenerAdapter() {
@@ -71,7 +110,6 @@ class Card(context: Context, val cardId: Int, val pairId: Int, val symbol: Strin
     }
 
     fun animateMatchPulse(onEnd: (() -> Unit)? = null) {
-        // Büyüyüp küçülme (pulse) animasyonu
         val scaleX = ObjectAnimator.ofFloat(this, "scaleX", 1f, 1.2f, 1f)
         val scaleY = ObjectAnimator.ofFloat(this, "scaleY", 1f, 1.2f, 1f)
 
@@ -90,8 +128,6 @@ class Card(context: Context, val cardId: Int, val pairId: Int, val symbol: Strin
 
     fun setMatchedAndHide(onEnd: (() -> Unit)? = null) {
         val animatorSet = AnimatorSet()
-
-        // Animasyonla kaybolacak (scale küçülerek yok olma ve saydamlaşma)
         val scaleX = ObjectAnimator.ofFloat(this, "scaleX", 1f, 0f)
         val scaleY = ObjectAnimator.ofFloat(this, "scaleY", 1f, 0f)
         val alpha = ObjectAnimator.ofFloat(this, "alpha", 1f, 0f)

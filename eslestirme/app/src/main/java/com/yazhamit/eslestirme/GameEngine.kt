@@ -7,9 +7,12 @@ import android.animation.ObjectAnimator
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.view.View
 import android.widget.FrameLayout
+import android.widget.TextView
 import kotlin.math.ceil
 import kotlin.math.sqrt
+import kotlin.random.Random
 
 class GameEngine(private val context: Context, private val gameBoard: FrameLayout, private val callback: GameCallback) {
     private val gameManager = GameManager()
@@ -20,6 +23,10 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
     val soundManager = SoundManager(context)
 
     private val cardSymbols = listOf("★", "♥", "♦", "♣", "♠", "▲", "▼", "◆", "●", "■", "△", "▽", "◇", "○", "□")
+    private val powerUpSymbols = listOf("👁️", "💣")
+
+    // UI'da kombo ve power-up bildirimi icin MainActivity'den gelecek TextView
+    var powerUpTextView: TextView? = null
 
     interface GameCallback {
         fun onScoreChanged(score: Int)
@@ -41,10 +48,32 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
         val cardCount = gameManager.getCardCountForLevel()
         val pairsCount = cardCount / 2
 
+        var hasPowerUp = false
+        // %30 ihtimalle bu seviyede bir power-up olabilir.
+        if (Random.nextInt(100) < 30 && pairsCount > 3) {
+            hasPowerUp = true
+        }
+
+        // Kart çiftleri oluşturma
         for (i in 0 until pairsCount) {
-            val symbol = cardSymbols[i % cardSymbols.size]
-            cards.add(Card(context, cardId = i * 2, pairId = i, symbol = symbol))
-            cards.add(Card(context, cardId = i * 2 + 1, pairId = i, symbol = symbol))
+            if (hasPowerUp && i == pairsCount - 1) { // Son cifti Power-Up yapiyoruz
+                val pType = if (Random.nextBoolean()) "RADAR" else "BOMB"
+                val pSymbol = if (pType == "RADAR") powerUpSymbols[0] else powerUpSymbols[1]
+
+                val pCard1 = Card(context, cardId = i * 2, pairId = i, symbol = pSymbol)
+                val pCard2 = Card(context, cardId = i * 2 + 1, pairId = i, symbol = pSymbol)
+                pCard1.isPowerUp = true
+                pCard1.powerUpType = pType
+                pCard2.isPowerUp = true
+                pCard2.powerUpType = pType
+
+                cards.add(pCard1)
+                cards.add(pCard2)
+            } else {
+                val symbol = cardSymbols[i % cardSymbols.size]
+                cards.add(Card(context, cardId = i * 2, pairId = i, symbol = symbol))
+                cards.add(Card(context, cardId = i * 2 + 1, pairId = i, symbol = symbol))
+            }
         }
 
         cards.shuffle()
@@ -83,6 +112,32 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
         }
     }
 
+    private fun showFrenzyMessage(message: String) {
+        powerUpTextView?.let {
+            it.text = message
+            it.visibility = View.VISIBLE
+            it.alpha = 1f
+            it.scaleX = 0f
+            it.scaleY = 0f
+
+            val scaleX = ObjectAnimator.ofFloat(it, "scaleX", 0f, 1.2f, 1f)
+            val scaleY = ObjectAnimator.ofFloat(it, "scaleY", 0f, 1.2f, 1f)
+            val fadeOut = ObjectAnimator.ofFloat(it, "alpha", 1f, 0f)
+            fadeOut.startDelay = 800 // Biraz beklesin
+
+            val animatorSet = AnimatorSet()
+            animatorSet.playTogether(scaleX, scaleY, fadeOut)
+            animatorSet.duration = 400
+
+            animatorSet.addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    it.visibility = View.GONE
+                }
+            })
+            animatorSet.start()
+        }
+    }
+
     private fun onCardClicked(card: Card) {
         if (isProcessing || card.isFaceUp || card.isMatched) return
 
@@ -107,15 +162,27 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
             gameManager.addScore()
             callback.onScoreChanged(gameManager.score)
 
-            // Pulse ve ses animasyonu calistirilir, ardindan merge animasyonu
             soundManager.playMatchSound()
+
+            // Kombo tetiklemesi kontrolu
+            if (gameManager.comboCount > 1) {
+                showFrenzyMessage("x${gameManager.comboCount} KOMBO!")
+            }
+
+            // Ozel Guc (Power-Up) kontrolu
+            if (card1.isPowerUp) {
+                triggerPowerUp(card1.powerUpType)
+            }
+
             card1.animateMatchPulse()
             card2.animateMatchPulse {
                 animateMatch(card1, card2)
             }
 
         } else {
-            // Mismatch
+            // Mismatch durumunda komboyu resetliyoruz
+            gameManager.resetCombo()
+
             Handler(Looper.getMainLooper()).postDelayed({
                 soundManager.playMismatchSound()
                 card1.animateMismatch()
@@ -124,7 +191,36 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
                     card2.flip()
                     isProcessing = false
                 }
-            }, 600) // Flip işlemi tamamlandiktan sonra kontrol
+            }, 600)
+        }
+    }
+
+    private fun triggerPowerUp(type: String) {
+        if (type == "RADAR") {
+            showFrenzyMessage("RADAR AKTİF!")
+            // Ekranda eşleşmemiş tüm kartları 1 saniyeliğine göster
+            cards.filter { !it.isMatched && !it.isFaceUp }.forEach {
+                it.peek()
+            }
+        } else if (type == "BOMB") {
+            showFrenzyMessage("BOMBA PATLADI!")
+            // Eşleşmemiş rastgele bir çift bul
+            val unmatched = cards.filter { !it.isMatched }
+            if (unmatched.isNotEmpty()) {
+                val pairIdToFind = unmatched.random().pairId
+                val targetPair = unmatched.filter { it.pairId == pairIdToFind }
+
+                if (targetPair.size == 2) {
+                    targetPair[0].isMatched = true
+                    targetPair[1].isMatched = true
+
+                    // Bomb match efektleri
+                    targetPair[0].animateMatchPulse()
+                    targetPair[1].animateMatchPulse {
+                        animateMatch(targetPair[0], targetPair[1])
+                    }
+                }
+            }
         }
     }
 
