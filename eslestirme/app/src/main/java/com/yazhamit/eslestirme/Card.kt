@@ -11,12 +11,16 @@ import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
 import android.widget.TextView
 
-class Card(context: Context, val cardId: Int, val pairId: Int, val symbol: String) : FrameLayout(context) {
+class Card(context: Context, val cardId: Int, var pairId: Int, var symbol: String) : FrameLayout(context) {
 
     var isFaceUp: Boolean = false
     var isMatched: Boolean = false
     var isPowerUp: Boolean = false
     var powerUpType: String = "" // "RADAR" veya "BOMB"
+
+    // Grid pozisyonlarını tutmak için
+    var gridRow: Int = 0
+    var gridCol: Int = 0
 
     private val textView: TextView
 
@@ -47,7 +51,7 @@ class Card(context: Context, val cardId: Int, val pairId: Int, val symbol: Strin
                 isFaceUp = !isFaceUp
                 if (isFaceUp) {
                     if (isPowerUp) {
-                        setBackgroundColor(Color.YELLOW) // Power-up arkaplani belli olsun
+                        setBackgroundColor(Color.YELLOW)
                     } else {
                         setBackgroundResource(R.drawable.card_front)
                     }
@@ -63,7 +67,6 @@ class Card(context: Context, val cardId: Int, val pairId: Int, val symbol: Strin
         flipOut.start()
     }
 
-    // Gözlemci (Radar) özelliği için anında gösterip geri kapatma
     fun peek() {
         if (isMatched || isFaceUp) return
 
@@ -96,6 +99,21 @@ class Card(context: Context, val cardId: Int, val pairId: Int, val symbol: Strin
         })
 
         peekOut.start()
+    }
+
+    // Sembol değiştirme (Morphing) animasyonu (Titreyerek değişir)
+    fun morphSymbol(newSymbol: String, newPairId: Int) {
+        if (isMatched || isFaceUp) return
+
+        val shake = ObjectAnimator.ofFloat(this, "rotation", 0f, 15f, -15f, 10f, -10f, 0f)
+        shake.duration = 500
+        shake.addListener(object : AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: Animator) {
+                symbol = newSymbol
+                pairId = newPairId
+            }
+        })
+        shake.start()
     }
 
     fun animateMismatch(onEnd: (() -> Unit)? = null) {

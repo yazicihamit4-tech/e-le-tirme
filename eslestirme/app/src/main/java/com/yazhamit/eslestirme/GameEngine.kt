@@ -28,6 +28,16 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
     // UI'da kombo ve power-up bildirimi icin MainActivity'den gelecek TextView
     var powerUpTextView: TextView? = null
 
+    // Zaman Kaymasi (Morphing) Handler
+    private val morphHandler = Handler(Looper.getMainLooper())
+    private val morphRunnable = object : Runnable {
+        override fun run() {
+            triggerMorphing()
+            // Her 15-20 saniyede bir tetikle
+            morphHandler.postDelayed(this, Random.nextLong(15000, 20000))
+        }
+    }
+
     interface GameCallback {
         fun onScoreChanged(score: Int)
         fun onLevelChanged(level: Int)
@@ -45,18 +55,20 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
         gameBoard.removeAllViews()
         cards.clear()
 
+        // Önceki seviyeden kalan morph timer'ı temizle
+        morphHandler.removeCallbacksAndMessages(null)
+
         val cardCount = gameManager.getCardCountForLevel()
         val pairsCount = cardCount / 2
 
         var hasPowerUp = false
-        // %30 ihtimalle bu seviyede bir power-up olabilir.
         if (Random.nextInt(100) < 30 && pairsCount > 3) {
             hasPowerUp = true
         }
 
         // Kart çiftleri oluşturma
         for (i in 0 until pairsCount) {
-            if (hasPowerUp && i == pairsCount - 1) { // Son cifti Power-Up yapiyoruz
+            if (hasPowerUp && i == pairsCount - 1) {
                 val pType = if (Random.nextBoolean()) "RADAR" else "BOMB"
                 val pSymbol = if (pType == "RADAR") powerUpSymbols[0] else powerUpSymbols[1]
 
@@ -94,6 +106,9 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
                 val row = i / columns
                 val col = i % columns
 
+                card.gridRow = row
+                card.gridCol = col
+
                 val x = spacing + col * (cardWidth + spacing)
                 val y = spacing + row * (cardHeight + spacing)
 
@@ -109,7 +124,47 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
 
                 gameBoard.addView(card)
             }
+
+            // Grid yüklendiğinde Morph timer başlat (Level 3 ten sonra zorluk olarak ekleyelim)
+            if (gameManager.currentLevel >= 3) {
+                morphHandler.postDelayed(morphRunnable, Random.nextLong(10000, 15000))
+            }
         }
+    }
+
+    private fun triggerMorphing() {
+        if (isProcessing) return
+
+        // Eşleşmemiş, kapalı olan ve Özel Güç kartı olmayanları bul
+        val availableCards = cards.filter { !it.isMatched && !it.isFaceUp && !it.isPowerUp }
+
+        // Farklı pairId'lere sahip en az 2 farklı çift (4 kart) gereklidir
+        val pairIds = availableCards.map { it.pairId }.distinct()
+        if (pairIds.size >= 2) {
+            // Rastgele iki çift (pairId) seçiyoruz
+            val pairId1 = pairIds.random()
+            val pairId2 = pairIds.filter { it != pairId1 }.random()
+
+            val pair1Cards = availableCards.filter { it.pairId == pairId1 }
+            val pair2Cards = availableCards.filter { it.pairId == pairId2 }
+
+            if (pair1Cards.size == 2 && pair2Cards.size == 2) {
+                val symbol1 = pair1Cards[0].symbol
+                val symbol2 = pair2Cards[0].symbol
+
+                // Sembolleri takas et (A -> B, B -> A)
+                showFrenzyMessage("ZAMAN KAYMASI!")
+                // Morph sound varsa çal (mismatch sound alternatif olabilir şimdilik)
+                soundManager.playMismatchSound()
+
+                pair1Cards.forEach { it.morphSymbol(symbol2, pairId2) }
+                pair2Cards.forEach { it.morphSymbol(symbol1, pairId1) }
+            }
+        }
+    }
+
+    fun stopEngine() {
+        morphHandler.removeCallbacksAndMessages(null)
     }
 
     private fun showFrenzyMessage(message: String) {
@@ -123,7 +178,7 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
             val scaleX = ObjectAnimator.ofFloat(it, "scaleX", 0f, 1.2f, 1f)
             val scaleY = ObjectAnimator.ofFloat(it, "scaleY", 0f, 1.2f, 1f)
             val fadeOut = ObjectAnimator.ofFloat(it, "alpha", 1f, 0f)
-            fadeOut.startDelay = 800 // Biraz beklesin
+            fadeOut.startDelay = 800
 
             val animatorSet = AnimatorSet()
             animatorSet.playTogether(scaleX, scaleY, fadeOut)
@@ -164,23 +219,20 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
 
             soundManager.playMatchSound()
 
-            // Kombo tetiklemesi kontrolu
             if (gameManager.comboCount > 1) {
                 showFrenzyMessage("x${gameManager.comboCount} KOMBO!")
             }
 
-            // Ozel Guc (Power-Up) kontrolu
             if (card1.isPowerUp) {
                 triggerPowerUp(card1.powerUpType)
             }
 
             card1.animateMatchPulse()
             card2.animateMatchPulse {
-                animateMatch(card1, card2)
+                animateMatchAndApplyGravity(card1, card2)
             }
 
         } else {
-            // Mismatch durumunda komboyu resetliyoruz
             gameManager.resetCombo()
 
             Handler(Looper.getMainLooper()).postDelayed({
@@ -198,13 +250,11 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
     private fun triggerPowerUp(type: String) {
         if (type == "RADAR") {
             showFrenzyMessage("RADAR AKTİF!")
-            // Ekranda eşleşmemiş tüm kartları 1 saniyeliğine göster
             cards.filter { !it.isMatched && !it.isFaceUp }.forEach {
                 it.peek()
             }
         } else if (type == "BOMB") {
             showFrenzyMessage("BOMBA PATLADI!")
-            // Eşleşmemiş rastgele bir çift bul
             val unmatched = cards.filter { !it.isMatched }
             if (unmatched.isNotEmpty()) {
                 val pairIdToFind = unmatched.random().pairId
@@ -214,17 +264,16 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
                     targetPair[0].isMatched = true
                     targetPair[1].isMatched = true
 
-                    // Bomb match efektleri
                     targetPair[0].animateMatchPulse()
                     targetPair[1].animateMatchPulse {
-                        animateMatch(targetPair[0], targetPair[1])
+                        animateMatchAndApplyGravity(targetPair[0], targetPair[1])
                     }
                 }
             }
         }
     }
 
-    private fun animateMatch(card1: Card, card2: Card) {
+    private fun animateMatchAndApplyGravity(card1: Card, card2: Card) {
         val boardWidth = gameBoard.width
         val boardHeight = gameBoard.height
 
@@ -245,12 +294,74 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
             override fun onAnimationEnd(animation: Animator) {
                 card1.setMatchedAndHide()
                 card2.setMatchedAndHide {
-                    checkLevelComplete()
-                    isProcessing = false
+                    applyGravity(card1, card2)
                 }
             }
         })
         moveAnimatorSet.start()
+    }
+
+    private fun applyGravity(matchedCard1: Card, matchedCard2: Card) {
+        val columnsToUpdate = listOf(matchedCard1.gridCol, matchedCard2.gridCol).distinct()
+
+        var animationCount = 0
+        var completedCount = 0
+
+        // Kartlar bir kez merkeze kaydığı icin grid pozisyonlarindaki X/Y'ler artik geçerli değil
+        // Sadece Grid indexlerini kullanarak yukarıdan aşağıya (Gravity) siralama mantigi:
+        val cardCountForLevel = gameManager.getCardCountForLevel()
+        val totalCols = ceil(sqrt(cardCountForLevel.toDouble())).toInt()
+        val totalRows = ceil(cardCountForLevel.toDouble() / totalCols).toInt()
+
+        val spacing = 16
+        val cardHeight = (gameBoard.height - (totalRows + 1) * spacing) / totalRows
+
+        for (col in columnsToUpdate) {
+            val columnCards = cards.filter { it.gridCol == col && !it.isMatched }
+                .sortedByDescending { it.gridRow }
+
+            var targetRow = totalRows - 1
+
+            for (card in columnCards) {
+                if (card.gridRow != targetRow) {
+                    val oldRow = card.gridRow
+                    card.gridRow = targetRow
+
+                    val newY = spacing + targetRow * (cardHeight + spacing)
+
+                    // Card'ın translationY sini değil, doğrudan layout'un Y parametresini değiştiriyoruz
+                    val fallAnim = ObjectAnimator.ofFloat(card, "y", card.y, newY.toFloat())
+                    fallAnim.duration = 300
+
+                    animationCount++
+                    fallAnim.addListener(object: AnimatorListenerAdapter() {
+                        override fun onAnimationEnd(animation: Animator) {
+                            val lp = card.layoutParams as FrameLayout.LayoutParams
+                            lp.topMargin = newY
+                            card.layoutParams = lp
+
+                            // Animasyon bitiminde y eksenini resetlemeliyiz ki view'in kendi render loopunda
+                            // asil yukseklik layoutMargin uzerinden okundugunda asagi dogru sekmeler olmasin
+                            card.translationY = 0f
+                            card.y = newY.toFloat()
+
+                            completedCount++
+                            if (completedCount == animationCount) {
+                                checkLevelComplete()
+                                isProcessing = false
+                            }
+                        }
+                    })
+                    fallAnim.start()
+                }
+                targetRow--
+            }
+        }
+
+        if (animationCount == 0) {
+            checkLevelComplete()
+            isProcessing = false
+        }
     }
 
     private fun checkLevelComplete() {

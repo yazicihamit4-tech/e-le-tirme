@@ -100,6 +100,7 @@ class MainActivity : AppCompatActivity(), GameEngine.GameCallback {
 
     override fun onDestroy() {
         super.onDestroy()
+        gameEngine.stopEngine()
         gameEngine.soundManager.release()
     }
 }
