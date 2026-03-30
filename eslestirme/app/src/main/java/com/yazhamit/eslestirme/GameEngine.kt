@@ -307,8 +307,6 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
         var animationCount = 0
         var completedCount = 0
 
-        // Kartlar bir kez merkeze kaydığı icin grid pozisyonlarindaki X/Y'ler artik geçerli değil
-        // Sadece Grid indexlerini kullanarak yukarıdan aşağıya (Gravity) siralama mantigi:
         val cardCountForLevel = gameManager.getCardCountForLevel()
         val totalCols = ceil(sqrt(cardCountForLevel.toDouble())).toInt()
         val totalRows = ceil(cardCountForLevel.toDouble() / totalCols).toInt()
@@ -325,25 +323,26 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
             for (card in columnCards) {
                 if (card.gridRow != targetRow) {
                     val oldRow = card.gridRow
+                    val rowsToFall = targetRow - oldRow
+
+                    // Hesaplama: card'in bir alt satira dusmesi icin katetmesi gereken mesafe = rowsToFall * (cardHeight + spacing)
+                    val fallDistance = rowsToFall * (cardHeight + spacing)
+
+                    // Grid parametresini hemen guncelliyoruz, gorseli animasyon bitince oturtacagiz
                     card.gridRow = targetRow
 
-                    val newY = spacing + targetRow * (cardHeight + spacing)
-
-                    // Card'ın translationY sini değil, doğrudan layout'un Y parametresini değiştiriyoruz
-                    val fallAnim = ObjectAnimator.ofFloat(card, "y", card.y, newY.toFloat())
+                    val fallAnim = ObjectAnimator.ofFloat(card, "translationY", 0f, fallDistance.toFloat())
                     fallAnim.duration = 300
 
                     animationCount++
                     fallAnim.addListener(object: AnimatorListenerAdapter() {
                         override fun onAnimationEnd(animation: Animator) {
+                            // Animasyon bittiginde layoutParams guncellenir ve translation sifirlanir
                             val lp = card.layoutParams as FrameLayout.LayoutParams
-                            lp.topMargin = newY
+                            lp.topMargin += fallDistance
                             card.layoutParams = lp
 
-                            // Animasyon bitiminde y eksenini resetlemeliyiz ki view'in kendi render loopunda
-                            // asil yukseklik layoutMargin uzerinden okundugunda asagi dogru sekmeler olmasin
                             card.translationY = 0f
-                            card.y = newY.toFloat()
 
                             completedCount++
                             if (completedCount == animationCount) {
