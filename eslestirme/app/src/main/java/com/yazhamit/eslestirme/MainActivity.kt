@@ -2,6 +2,7 @@ package com.yazhamit.eslestirme
 
 import android.animation.ArgbEvaluator
 import android.animation.ValueAnimator
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.widget.ImageView
@@ -58,9 +59,16 @@ class MainActivity : AppCompatActivity(), GameEngine.GameCallback {
             insets
         }
 
+        val gameMode = intent.getStringExtra("GAME_MODE") ?: "CLASSIC"
+
         gameEngine = GameEngine(this, gameBoard, this)
         gameEngine.powerUpTextView = powerUpTextView
-        gameEngine.startGame()
+
+        if (gameMode == "SURVIVAL") {
+            levelTextView.text = "SURVIVAL"
+        }
+
+        gameEngine.startGame(gameMode)
 
         soundButton.setOnClickListener {
             gameEngine.soundManager.isMuted = !gameEngine.soundManager.isMuted
@@ -78,6 +86,7 @@ class MainActivity : AppCompatActivity(), GameEngine.GameCallback {
     }
 
     override fun onLevelChanged(level: Int) {
+        if (gameEngine.gameMode == "SURVIVAL") return
         levelTextView.text = "Level: $level"
 
         val newColorStr = levelColors[(level - 1) % levelColors.size]
@@ -96,6 +105,18 @@ class MainActivity : AppCompatActivity(), GameEngine.GameCallback {
 
     override fun onGameFinished() {
         Toast.makeText(this, "Tebrikler! Oyunu tamamladınız.", Toast.LENGTH_LONG).show()
+        goBackToLobby()
+    }
+
+    override fun onGameOver(score: Int) {
+        Toast.makeText(this, "OYUN BİTTİ! Skor: $score", Toast.LENGTH_LONG).show()
+        goBackToLobby()
+    }
+
+    private fun goBackToLobby() {
+        val intent = Intent(this, LobbyActivity::class.java)
+        startActivity(intent)
+        finish()
     }
 
     override fun onDestroy() {

@@ -12,6 +12,7 @@ import android.view.Gravity
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
@@ -21,18 +22,32 @@ import kotlin.random.Random
 class LobbyActivity : AppCompatActivity() {
 
     private lateinit var playButton: Button
+    private lateinit var survivalButton: Button
+    private lateinit var questsButton: Button
     private lateinit var animatedBackground: FrameLayout
+    private lateinit var coinsTextView: TextView
+    private lateinit var highScoreTextView: TextView
+
     private val symbols = listOf("★", "♥", "♦", "♣", "♠", "▲", "▼", "◆", "●", "■", "△", "▽", "◇", "○", "□")
     private val handler = Handler(Looper.getMainLooper())
     private var isAnimating = true
+
+    private lateinit var dataManager: DataManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContentView(R.layout.activity_lobby)
 
+        dataManager = DataManager(this)
+        dataManager.checkAndResetDailyTasks()
+
         playButton = findViewById(R.id.playButton)
+        survivalButton = findViewById(R.id.survivalButton)
+        questsButton = findViewById(R.id.questsButton)
         animatedBackground = findViewById(R.id.animatedBackground)
+        coinsTextView = findViewById(R.id.coinsTextView)
+        highScoreTextView = findViewById(R.id.highScoreTextView)
 
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.lobby_main)) { v, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
@@ -54,12 +69,42 @@ class LobbyActivity : AppCompatActivity() {
 
         playButton.setOnClickListener {
             val intent = Intent(this, MainActivity::class.java)
+            intent.putExtra("GAME_MODE", "CLASSIC")
             startActivity(intent)
-            finish() // Lobby'i kapatıyoruz
+            finish()
         }
 
-        // Arka plan hareketli simgeler başlatılıyor
+        survivalButton.setOnClickListener {
+            val intent = Intent(this, MainActivity::class.java)
+            intent.putExtra("GAME_MODE", "SURVIVAL")
+            startActivity(intent)
+            finish()
+        }
+
+        questsButton.setOnClickListener {
+            val totalNeeded = 50
+            val current = dataManager.dailyMatches
+
+            if (current >= totalNeeded) {
+                // TODO: Odulu bir defa almak icin bir flag de tutulabilir
+                Toast.makeText(this, "Günlük Görev Zaten Tamamlandı! \n(50/50 Kart Eşleşti)", Toast.LENGTH_LONG).show()
+            } else {
+                val remaining = totalNeeded - current
+                Toast.makeText(this, "Günlük Görev:\n50 Kart Eşleştir.\nKalan: $remaining\nÖdül: 500 🪙", Toast.LENGTH_LONG).show()
+            }
+        }
+
         startFloatingSymbols()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updateUI()
+    }
+
+    private fun updateUI() {
+        coinsTextView.text = dataManager.totalCoins.toString()
+        highScoreTextView.text = dataManager.highScore.toString()
     }
 
     private fun startFloatingSymbols() {
@@ -68,7 +113,7 @@ class LobbyActivity : AppCompatActivity() {
                 if (!isAnimating) return
 
                 spawnFloatingSymbol()
-                handler.postDelayed(this, 800) // Her 800ms'de bir sembol çıkar
+                handler.postDelayed(this, 800)
             }
         }
         handler.post(runnable)
@@ -78,14 +123,13 @@ class LobbyActivity : AppCompatActivity() {
         val textView = TextView(this).apply {
             text = symbols[Random.nextInt(symbols.size)]
             textSize = Random.nextInt(24, 64).toFloat()
-            setTextColor(android.graphics.Color.argb(Random.nextInt(50, 150), 255, 64, 129)) // Yari saydam, rastgele tonlarda pembe
+            setTextColor(android.graphics.Color.argb(Random.nextInt(50, 150), 255, 64, 129))
             gravity = Gravity.CENTER
         }
 
         val params = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT)
         animatedBackground.addView(textView, params)
 
-        // Rastgele X pozisyonu (Ekran genişliğine göre hesaplayalım)
         animatedBackground.post {
             val width = animatedBackground.width
             val height = animatedBackground.height
@@ -98,15 +142,12 @@ class LobbyActivity : AppCompatActivity() {
             textView.x = startX
             textView.y = startY
 
-            // Yukarı doğru süzülme animasyonu
             val floatUp = ObjectAnimator.ofFloat(textView, "translationY", startY, endY)
             floatUp.duration = Random.nextLong(4000, 8000)
 
-            // Yavaşça dönerken süzülme (Rotation)
             val rotate = ObjectAnimator.ofFloat(textView, "rotation", 0f, Random.nextInt(180, 360).toFloat())
             rotate.duration = floatUp.duration
 
-            // X ekseninde hafifçe dalgalanma
             val driftX = ObjectAnimator.ofFloat(textView, "translationX", startX, startX + Random.nextInt(-50, 50))
             driftX.duration = floatUp.duration
 

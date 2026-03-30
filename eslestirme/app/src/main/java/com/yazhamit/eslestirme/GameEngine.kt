@@ -16,6 +16,7 @@ import kotlin.random.Random
 
 class GameEngine(private val context: Context, private val gameBoard: FrameLayout, private val callback: GameCallback) {
     private val gameManager = GameManager()
+    private val dataManager = DataManager(context)
     private val cards = mutableListOf<Card>()
     private var firstSelectedCard: Card? = null
     private var isProcessing = false
@@ -25,16 +26,27 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
     private val cardSymbols = listOf("★", "♥", "♦", "♣", "♠", "▲", "▼", "◆", "●", "■", "△", "▽", "◇", "○", "□")
     private val powerUpSymbols = listOf("👁️", "💣")
 
-    // UI'da kombo ve power-up bildirimi icin MainActivity'den gelecek TextView
     var powerUpTextView: TextView? = null
 
-    // Zaman Kaymasi (Morphing) Handler
+    // Oyun modu: "CLASSIC" veya "SURVIVAL"
+    var gameMode: String = "CLASSIC"
+
     private val morphHandler = Handler(Looper.getMainLooper())
     private val morphRunnable = object : Runnable {
         override fun run() {
             triggerMorphing()
-            // Her 15-20 saniyede bir tetikle
             morphHandler.postDelayed(this, Random.nextLong(15000, 20000))
+        }
+    }
+
+    // Survival Mod icin saniye basina yukaridan yeni kart ekleme handler'i
+    private val survivalHandler = Handler(Looper.getMainLooper())
+    private val survivalRunnable = object : Runnable {
+        override fun run() {
+            if (gameMode == "SURVIVAL") {
+                spawnSurvivalRow()
+                survivalHandler.postDelayed(this, 15000)
+            }
         }
     }
 
@@ -42,9 +54,11 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
         fun onScoreChanged(score: Int)
         fun onLevelChanged(level: Int)
         fun onGameFinished()
+        fun onGameOver(score: Int)
     }
 
-    fun startGame() {
+    fun startGame(mode: String) {
+        this.gameMode = mode
         gameManager.reset()
         callback.onLevelChanged(gameManager.currentLevel)
         callback.onScoreChanged(gameManager.score)
@@ -55,18 +69,23 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
         gameBoard.removeAllViews()
         cards.clear()
 
-        // Önceki seviyeden kalan morph timer'ı temizle
         morphHandler.removeCallbacksAndMessages(null)
+        survivalHandler.removeCallbacksAndMessages(null)
 
-        val cardCount = gameManager.getCardCountForLevel()
+        var cardCount = gameManager.getCardCountForLevel()
+
+        if (gameMode == "SURVIVAL") {
+            // Survival mode ekranı tamamen doldurmayacak sekilde (mesela max 20) baslar
+            cardCount = 20
+        }
+
         val pairsCount = cardCount / 2
 
         var hasPowerUp = false
-        if (Random.nextInt(100) < 30 && pairsCount > 3) {
+        if (gameMode == "CLASSIC" && Random.nextInt(100) < 30 && pairsCount > 3) {
             hasPowerUp = true
         }
 
-        // Kart çiftleri oluşturma
         for (i in 0 until pairsCount) {
             if (hasPowerUp && i == pairsCount - 1) {
                 val pType = if (Random.nextBoolean()) "RADAR" else "BOMB"
@@ -90,8 +109,8 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
 
         cards.shuffle()
 
-        val columns = ceil(sqrt(cardCount.toDouble())).toInt()
-        val rows = ceil(cardCount.toDouble() / columns).toInt()
+        val columns = if (gameMode == "SURVIVAL") 4 else ceil(sqrt(cardCount.toDouble())).toInt()
+        val rows = if (gameMode == "SURVIVAL") 6 else ceil(cardCount.toDouble() / columns).toInt()
 
         gameBoard.post {
             val boardWidth = gameBoard.width
@@ -101,47 +120,137 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
             val cardWidth = (boardWidth - (columns + 1) * spacing) / columns
             val cardHeight = (boardHeight - (rows + 1) * spacing) / rows
 
-            for (i in 0 until cards.size) {
-                val card = cards[i]
-                val row = i / columns
-                val col = i % columns
+            // Survival'da kartlari ekranin altindan baslayarak doldurmak daha zorlayicidir,
+            // biz simdilik yukaridan dizecegiz ama bosluklari altta birakacagiz
+            var currentCardIndex = 0
 
-                card.gridRow = row
-                card.gridCol = col
+            // Survival'da son x satırı dolu basalım
+            val startRow = if (gameMode == "SURVIVAL") rows - (cards.size / columns) else 0
 
-                val x = spacing + col * (cardWidth + spacing)
-                val y = spacing + row * (cardHeight + spacing)
+            for (r in startRow until rows) {
+                for (c in 0 until columns) {
+                    if (currentCardIndex >= cards.size) break
 
-                val layoutParams = FrameLayout.LayoutParams(cardWidth, cardHeight).apply {
-                    leftMargin = x
-                    topMargin = y
+                    val card = cards[currentCardIndex]
+                    card.gridRow = r
+                    card.gridCol = c
+
+                    val x = spacing + c * (cardWidth + spacing)
+                    val y = spacing + r * (cardHeight + spacing)
+
+                    val layoutParams = FrameLayout.LayoutParams(cardWidth, cardHeight).apply {
+                        leftMargin = x
+                        topMargin = y
+                    }
+
+                    card.layoutParams = layoutParams
+                    card.setOnClickListener {
+                        onCardClicked(card)
+                    }
+
+                    gameBoard.addView(card)
+                    currentCardIndex++
                 }
-
-                card.layoutParams = layoutParams
-                card.setOnClickListener {
-                    onCardClicked(card)
-                }
-
-                gameBoard.addView(card)
             }
 
-            // Grid yüklendiğinde Morph timer başlat (Level 3 ten sonra zorluk olarak ekleyelim)
-            if (gameManager.currentLevel >= 3) {
+            if (gameMode == "CLASSIC" && gameManager.currentLevel >= 3) {
                 morphHandler.postDelayed(morphRunnable, Random.nextLong(10000, 15000))
+            }
+
+            if (gameMode == "SURVIVAL") {
+                survivalHandler.postDelayed(survivalRunnable, 15000)
             }
         }
     }
 
+    private fun spawnSurvivalRow() {
+        // En ust satira kart ekleme
+        val columns = 4
+        val rows = 6
+
+        // Eger herhangi bir sutunda ust satirlar (row 0) doluysa oyun biter
+        val isGameOver = cards.any { !it.isMatched && it.gridRow == 0 }
+        if (isGameOver) {
+            endGame()
+            return
+        }
+
+        // Mevcut kartlari 1 satir asagi kaydir (Dusen blok mantigi)
+        val spacing = 16
+        val cardHeight = (gameBoard.height - (rows + 1) * spacing) / rows
+
+        for (card in cards.filter { !it.isMatched }) {
+            card.gridRow += 1
+            val newY = spacing + card.gridRow * (cardHeight + spacing)
+
+            val fallAnim = ObjectAnimator.ofFloat(card, "translationY", 0f, (cardHeight + spacing).toFloat())
+            fallAnim.duration = 200
+            fallAnim.addListener(object: AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    val lp = card.layoutParams as FrameLayout.LayoutParams
+                    lp.topMargin = newY
+                    card.layoutParams = lp
+                    card.translationY = 0f
+                }
+            })
+            fallAnim.start()
+        }
+
+        // Ust satira (row = 0) yeni 1 satir kart ekle (Mesela 4 sutun)
+        val newPairs = columns / 2
+        val newCards = mutableListOf<Card>()
+        val maxId = cards.maxOfOrNull { it.cardId } ?: 0
+        val maxPairId = cards.maxOfOrNull { it.pairId } ?: 0
+
+        for (i in 0 until newPairs) {
+            val symbol = cardSymbols.random()
+            val pairId = maxPairId + 1 + i
+            newCards.add(Card(context, cardId = maxId + 1 + (i*2), pairId = pairId, symbol = symbol))
+            newCards.add(Card(context, cardId = maxId + 2 + (i*2), pairId = pairId, symbol = symbol))
+        }
+        newCards.shuffle()
+
+        val boardWidth = gameBoard.width
+        val cardWidth = (boardWidth - (columns + 1) * spacing) / columns
+
+        for (c in 0 until columns) {
+            if (c >= newCards.size) break
+            val card = newCards[c]
+            card.gridRow = 0
+            card.gridCol = c
+
+            val x = spacing + c * (cardWidth + spacing)
+            val y = spacing + 0 * (cardHeight + spacing)
+
+            val layoutParams = FrameLayout.LayoutParams(cardWidth, cardHeight).apply {
+                leftMargin = x
+                topMargin = y
+            }
+
+            card.layoutParams = layoutParams
+            card.setOnClickListener {
+                onCardClicked(card)
+            }
+
+            cards.add(card)
+            gameBoard.addView(card)
+        }
+    }
+
+    private fun endGame() {
+        stopEngine()
+        dataManager.totalCoins += gameManager.score / 2 // Puanlarin yarisi coin olur
+        if (gameManager.score > dataManager.highScore) {
+            dataManager.highScore = gameManager.score
+        }
+        callback.onGameOver(gameManager.score)
+    }
+
     private fun triggerMorphing() {
         if (isProcessing) return
-
-        // Eşleşmemiş, kapalı olan ve Özel Güç kartı olmayanları bul
         val availableCards = cards.filter { !it.isMatched && !it.isFaceUp && !it.isPowerUp }
-
-        // Farklı pairId'lere sahip en az 2 farklı çift (4 kart) gereklidir
         val pairIds = availableCards.map { it.pairId }.distinct()
         if (pairIds.size >= 2) {
-            // Rastgele iki çift (pairId) seçiyoruz
             val pairId1 = pairIds.random()
             val pairId2 = pairIds.filter { it != pairId1 }.random()
 
@@ -152,9 +261,7 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
                 val symbol1 = pair1Cards[0].symbol
                 val symbol2 = pair2Cards[0].symbol
 
-                // Sembolleri takas et (A -> B, B -> A)
                 showFrenzyMessage("ZAMAN KAYMASI!")
-                // Morph sound varsa çal (mismatch sound alternatif olabilir şimdilik)
                 soundManager.playMismatchSound()
 
                 pair1Cards.forEach { it.morphSymbol(symbol2, pairId2) }
@@ -165,6 +272,7 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
 
     fun stopEngine() {
         morphHandler.removeCallbacksAndMessages(null)
+        survivalHandler.removeCallbacksAndMessages(null)
     }
 
     private fun showFrenzyMessage(message: String) {
@@ -195,7 +303,6 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
 
     private fun onCardClicked(card: Card) {
         if (isProcessing || card.isFaceUp || card.isMatched) return
-
         if (firstSelectedCard == card) return
 
         card.flip()
@@ -215,12 +322,22 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
             card1.isMatched = true
             card2.isMatched = true
             gameManager.addScore()
-            callback.onScoreChanged(gameManager.score)
 
+            dataManager.dailyMatches += 1
+            if (dataManager.dailyMatches == 50) {
+                dataManager.totalCoins += 500
+                showFrenzyMessage("GÖREV: +500 🪙")
+            }
+
+            callback.onScoreChanged(gameManager.score)
             soundManager.playMatchSound()
 
             if (gameManager.comboCount > 1) {
                 showFrenzyMessage("x${gameManager.comboCount} KOMBO!")
+                if (gameManager.comboCount == 5 && !dataManager.achievementComboX5) {
+                    dataManager.achievementComboX5 = true
+                    showFrenzyMessage("BAŞARIM: X5 KOMBO!")
+                }
             }
 
             if (card1.isPowerUp) {
@@ -255,6 +372,10 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
             }
         } else if (type == "BOMB") {
             showFrenzyMessage("BOMBA PATLADI!")
+            if (!dataManager.achievementFirstBomb) {
+                dataManager.achievementFirstBomb = true
+                showFrenzyMessage("BAŞARIM: Bombacı!")
+            }
             val unmatched = cards.filter { !it.isMatched }
             if (unmatched.isNotEmpty()) {
                 val pairIdToFind = unmatched.random().pairId
@@ -307,9 +428,8 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
         var animationCount = 0
         var completedCount = 0
 
-        val cardCountForLevel = gameManager.getCardCountForLevel()
-        val totalCols = ceil(sqrt(cardCountForLevel.toDouble())).toInt()
-        val totalRows = ceil(cardCountForLevel.toDouble() / totalCols).toInt()
+        val totalCols = if (gameMode == "SURVIVAL") 4 else ceil(sqrt(gameManager.getCardCountForLevel().toDouble())).toInt()
+        val totalRows = if (gameMode == "SURVIVAL") 6 else ceil(gameManager.getCardCountForLevel().toDouble() / totalCols).toInt()
 
         val spacing = 16
         val cardHeight = (gameBoard.height - (totalRows + 1) * spacing) / totalRows
@@ -324,11 +444,8 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
                 if (card.gridRow != targetRow) {
                     val oldRow = card.gridRow
                     val rowsToFall = targetRow - oldRow
-
-                    // Hesaplama: card'in bir alt satira dusmesi icin katetmesi gereken mesafe = rowsToFall * (cardHeight + spacing)
                     val fallDistance = rowsToFall * (cardHeight + spacing)
 
-                    // Grid parametresini hemen guncelliyoruz, gorseli animasyon bitince oturtacagiz
                     card.gridRow = targetRow
 
                     val fallAnim = ObjectAnimator.ofFloat(card, "translationY", 0f, fallDistance.toFloat())
@@ -337,11 +454,9 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
                     animationCount++
                     fallAnim.addListener(object: AnimatorListenerAdapter() {
                         override fun onAnimationEnd(animation: Animator) {
-                            // Animasyon bittiginde layoutParams guncellenir ve translation sifirlanir
                             val lp = card.layoutParams as FrameLayout.LayoutParams
                             lp.topMargin += fallDistance
                             card.layoutParams = lp
-
                             card.translationY = 0f
 
                             completedCount++
@@ -364,7 +479,16 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
     }
 
     private fun checkLevelComplete() {
+        if (gameMode == "SURVIVAL") return // Survival bitmez, game over olana kadar
+
         if (cards.all { it.isMatched }) {
+
+            // Oyun sonu jeton ve rekor kaydi
+            dataManager.totalCoins += gameManager.score / 2
+            if (gameManager.score > dataManager.highScore) {
+                dataManager.highScore = gameManager.score
+            }
+
             gameManager.nextLevel()
             if (gameManager.currentLevel > 14) {
                 callback.onGameFinished()
