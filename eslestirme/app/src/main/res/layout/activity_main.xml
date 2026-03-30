@@ -7,7 +7,7 @@
     android:layout_height="match_parent"
     tools:context=".MainActivity">
 
-    <!-- Üst Bar: Skor ve Level Göstergeleri -->
+    <!-- Üst Bar: Skor, Level ve Ses Göstergeleri -->
     <LinearLayout
         android:id="@+id/topBar"
         android:layout_width="match_parent"
@@ -17,7 +17,7 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        android:gravity="center">
+        android:gravity="center_vertical">
 
         <TextView
             android:id="@+id/levelTextView"
@@ -27,7 +27,7 @@
             android:textSize="20sp"
             android:textStyle="bold"
             android:textColor="@android:color/black"
-            android:layout_marginEnd="32dp"/>
+            android:layout_weight="1" />
 
         <TextView
             android:id="@+id/scoreTextView"
@@ -36,7 +36,19 @@
             android:text="Skor: 0"
             android:textSize="20sp"
             android:textStyle="bold"
-            android:textColor="@android:color/black"/>
+            android:textColor="@android:color/black"
+            android:layout_weight="1"
+            android:gravity="center" />
+
+        <ImageView
+            android:id="@+id/soundButton"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:src="@drawable/ic_volume_up"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:layout_weight="0" />
 
     </LinearLayout>
 

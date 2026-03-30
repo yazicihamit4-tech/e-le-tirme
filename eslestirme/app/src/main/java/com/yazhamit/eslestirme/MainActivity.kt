@@ -1,6 +1,7 @@
 package com.yazhamit.eslestirme
 
 import android.os.Bundle
+import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import android.widget.FrameLayout
@@ -14,6 +15,7 @@ class MainActivity : AppCompatActivity(), GameEngine.GameCallback {
     private lateinit var gameBoard: FrameLayout
     private lateinit var levelTextView: TextView
     private lateinit var scoreTextView: TextView
+    private lateinit var soundButton: ImageView
     private lateinit var gameEngine: GameEngine
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -24,6 +26,7 @@ class MainActivity : AppCompatActivity(), GameEngine.GameCallback {
         gameBoard = findViewById(R.id.gameBoard)
         levelTextView = findViewById(R.id.levelTextView)
         scoreTextView = findViewById(R.id.scoreTextView)
+        soundButton = findViewById(R.id.soundButton)
 
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
@@ -33,6 +36,16 @@ class MainActivity : AppCompatActivity(), GameEngine.GameCallback {
 
         gameEngine = GameEngine(this, gameBoard, this)
         gameEngine.startGame()
+
+        soundButton.setOnClickListener {
+            gameEngine.soundManager.isMuted = !gameEngine.soundManager.isMuted
+
+            if (gameEngine.soundManager.isMuted) {
+                soundButton.setImageResource(R.drawable.ic_volume_off)
+            } else {
+                soundButton.setImageResource(R.drawable.ic_volume_up)
+            }
+        }
     }
 
     override fun onScoreChanged(score: Int) {
@@ -45,5 +58,10 @@ class MainActivity : AppCompatActivity(), GameEngine.GameCallback {
 
     override fun onGameFinished() {
         Toast.makeText(this, "Tebrikler! Oyunu tamamladınız.", Toast.LENGTH_LONG).show()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        gameEngine.soundManager.release()
     }
 }

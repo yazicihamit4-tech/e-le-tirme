@@ -17,6 +17,8 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
     private var firstSelectedCard: Card? = null
     private var isProcessing = false
 
+    val soundManager = SoundManager(context)
+
     private val cardSymbols = listOf("★", "♥", "♦", "♣", "♠", "▲", "▼", "◆", "●", "■", "△", "▽", "◇", "○", "□")
 
     interface GameCallback {
@@ -33,7 +35,6 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
     }
 
     private fun loadLevel() {
-        // Ekrandaki önceki kartları temizle
         gameBoard.removeAllViews()
         cards.clear()
 
@@ -48,7 +49,6 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
 
         cards.shuffle()
 
-        // 2D grid hesaplaması (sutun/satır)
         val columns = ceil(sqrt(cardCount.toDouble())).toInt()
         val rows = ceil(cardCount.toDouble() / columns).toInt()
 
@@ -56,7 +56,7 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
             val boardWidth = gameBoard.width
             val boardHeight = gameBoard.height
 
-            val spacing = 16 // piksel
+            val spacing = 16
             val cardWidth = (boardWidth - (columns + 1) * spacing) / columns
             val cardHeight = (boardHeight - (rows + 1) * spacing) / rows
 
@@ -86,7 +86,6 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
     private fun onCardClicked(card: Card) {
         if (isProcessing || card.isFaceUp || card.isMatched) return
 
-        // Double-tap bug'ını onlemek icin:
         if (firstSelectedCard == card) return
 
         card.flip()
@@ -108,31 +107,37 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
             gameManager.addScore()
             callback.onScoreChanged(gameManager.score)
 
-            // Birleşme ve yok olma animasyonu
-            animateMatch(card1, card2)
+            // Pulse ve ses animasyonu calistirilir, ardindan merge animasyonu
+            soundManager.playMatchSound()
+            card1.animateMatchPulse()
+            card2.animateMatchPulse {
+                animateMatch(card1, card2)
+            }
 
         } else {
+            // Mismatch
             Handler(Looper.getMainLooper()).postDelayed({
-                card1.flip()
-                card2.flip()
-                isProcessing = false
-            }, 1000)
+                soundManager.playMismatchSound()
+                card1.animateMismatch()
+                card2.animateMismatch {
+                    card1.flip()
+                    card2.flip()
+                    isProcessing = false
+                }
+            }, 600) // Flip işlemi tamamlandiktan sonra kontrol
         }
     }
 
     private fun animateMatch(card1: Card, card2: Card) {
-        // Kartları ekranın ortasına hareket ettirip (Translation X,Y) daha sonra boyutlarını sıfırlayarak kaybedeceğiz.
         val boardWidth = gameBoard.width
         val boardHeight = gameBoard.height
 
         val centerX = (boardWidth / 2f) - (card1.layoutParams.width / 2f)
         val centerY = (boardHeight / 2f) - (card1.layoutParams.height / 2f)
 
-        // Card1 merkeze gider
         val moveX1 = ObjectAnimator.ofFloat(card1, "translationX", centerX - card1.x)
         val moveY1 = ObjectAnimator.ofFloat(card1, "translationY", centerY - card1.y)
 
-        // Card2 merkeze gider
         val moveX2 = ObjectAnimator.ofFloat(card2, "translationX", centerX - card2.x)
         val moveY2 = ObjectAnimator.ofFloat(card2, "translationY", centerY - card2.y)
 
@@ -142,7 +147,6 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
 
         moveAnimatorSet.addListener(object : AnimatorListenerAdapter() {
             override fun onAnimationEnd(animation: Animator) {
-                // Merkeze geldiklerinde yok olma animasyonunu tetikle
                 card1.setMatchedAndHide()
                 card2.setMatchedAndHide {
                     checkLevelComplete()

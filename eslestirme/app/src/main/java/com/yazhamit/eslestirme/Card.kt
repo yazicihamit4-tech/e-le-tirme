@@ -7,6 +7,7 @@ import android.animation.ObjectAnimator
 import android.content.Context
 import android.graphics.Color
 import android.view.Gravity
+import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
 import android.widget.TextView
 
@@ -57,16 +58,46 @@ class Card(context: Context, val cardId: Int, val pairId: Int, val symbol: Strin
         flipOut.start()
     }
 
+    fun animateMismatch(onEnd: (() -> Unit)? = null) {
+        // Sağa sola titreme (shake) animasyonu
+        val animator = ObjectAnimator.ofFloat(this, "translationX", 0f, 20f, -20f, 20f, -20f, 10f, -10f, 0f)
+        animator.duration = 400
+        animator.addListener(object : AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: Animator) {
+                onEnd?.invoke()
+            }
+        })
+        animator.start()
+    }
+
+    fun animateMatchPulse(onEnd: (() -> Unit)? = null) {
+        // Büyüyüp küçülme (pulse) animasyonu
+        val scaleX = ObjectAnimator.ofFloat(this, "scaleX", 1f, 1.2f, 1f)
+        val scaleY = ObjectAnimator.ofFloat(this, "scaleY", 1f, 1.2f, 1f)
+
+        val animatorSet = AnimatorSet()
+        animatorSet.playTogether(scaleX, scaleY)
+        animatorSet.duration = 300
+        animatorSet.interpolator = OvershootInterpolator()
+
+        animatorSet.addListener(object : AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: Animator) {
+                onEnd?.invoke()
+            }
+        })
+        animatorSet.start()
+    }
+
     fun setMatchedAndHide(onEnd: (() -> Unit)? = null) {
         val animatorSet = AnimatorSet()
 
-        // Animasyonla kaybolacak (örnek: scale küçülerek yok olma ve saydamlaşma)
+        // Animasyonla kaybolacak (scale küçülerek yok olma ve saydamlaşma)
         val scaleX = ObjectAnimator.ofFloat(this, "scaleX", 1f, 0f)
         val scaleY = ObjectAnimator.ofFloat(this, "scaleY", 1f, 0f)
         val alpha = ObjectAnimator.ofFloat(this, "alpha", 1f, 0f)
 
         animatorSet.playTogether(scaleX, scaleY, alpha)
-        animatorSet.duration = 500
+        animatorSet.duration = 400
         animatorSet.addListener(object : AnimatorListenerAdapter() {
             override fun onAnimationEnd(animation: Animator) {
                 visibility = GONE
