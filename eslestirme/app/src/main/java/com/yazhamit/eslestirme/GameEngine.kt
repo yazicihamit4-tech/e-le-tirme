@@ -22,10 +22,10 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
     private val cards = mutableListOf<Card>()
     private var firstSelectedCard: Card? = null
     private var isProcessing = false
+    private var isGameOverState = false
 
     val soundManager = SoundManager(context)
 
-    // Temalara Gore Sembol Setleri
     private val themeClassic = listOf("★", "♥", "♦", "♣", "♠", "▲", "▼", "◆", "●", "■", "△", "▽", "◇", "○", "□")
     private val themeAnimals = listOf("🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮", "🐷", "🐸", "🐵")
     private val themeFruits = listOf("🍎", "🍐", "🍊", "🍋", "🍌", "🍉", "🍇", "🍓", "🍈", "🍒", "🍑", "🍍", "🥥", "🥝", "🍅")
@@ -48,6 +48,8 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
     private val timerHandler = Handler(Looper.getMainLooper())
     private val timerRunnable = object : Runnable {
         override fun run() {
+            if (isGameOverState) return
+
             if (timeLeft > 0) {
                 timeLeft--
                 timerTextView?.text = "Süre: $timeLeft"
@@ -63,6 +65,7 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
     private val morphHandler = Handler(Looper.getMainLooper())
     private val morphRunnable = object : Runnable {
         override fun run() {
+            if (isGameOverState) return
             triggerMorphing()
             morphHandler.postDelayed(this, Random.nextLong(15000, 20000))
         }
@@ -71,20 +74,10 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
     private val survivalHandler = Handler(Looper.getMainLooper())
     private val survivalRunnable = object : Runnable {
         override fun run() {
+            if (isGameOverState) return
             if (gameMode == "SURVIVAL") {
                 spawnSurvivalRow()
                 survivalHandler.postDelayed(this, 15000)
-            }
-        }
-    }
-
-    // Boss dondurma handler'i
-    private val bossFreezeHandler = Handler(Looper.getMainLooper())
-    private val bossFreezeRunnable = object : Runnable {
-        override fun run() {
-            if (isBossLevel && bossCurrentHp > 0) {
-                freezeRandomCards()
-                bossFreezeHandler.postDelayed(this, Random.nextLong(6000, 10000))
             }
         }
     }
@@ -105,11 +98,12 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
     }
 
     private fun loadLevel() {
+        if (isGameOverState) return
+
         gameBoard.removeAllViews()
         cards.clear()
         stopEngine()
 
-        // Her 5. Seviye Boss
         isBossLevel = (gameMode == "CLASSIC" && gameManager.currentLevel % 5 == 0)
 
         val cardCount = if (gameMode == "SURVIVAL") 20 else gameManager.getCardCountForLevel()
@@ -164,6 +158,8 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
         val rows = if (gameMode == "SURVIVAL") 6 else ceil(cardCount.toDouble() / columns).toInt()
 
         gameBoard.post {
+            if (isGameOverState) return@post
+
             val boardWidth = gameBoard.width
             val boardHeight = gameBoard.height
 
@@ -211,7 +207,6 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
 
                 if (isBossLevel) {
                     showFrenzyMessage("BOSS GELDİ!")
-                    bossFreezeHandler.postDelayed(bossFreezeRunnable, 5000)
                 }
             }
 
@@ -219,18 +214,6 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
                 timerTextView?.text = "Süre: ∞"
                 survivalHandler.postDelayed(survivalRunnable, 15000)
             }
-        }
-    }
-
-    private fun freezeRandomCards() {
-        val availableCards = cards.filter { !it.isMatched && !it.isFaceUp && !it.isFrozen }
-        if (availableCards.size >= 2) {
-            val toFreeze = availableCards.shuffled().take(2)
-            toFreeze.forEach {
-                it.freeze()
-                it.animateMismatch()
-            }
-            soundManager.playMismatchSound()
         }
     }
 
@@ -312,6 +295,10 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
     }
 
     private fun endGame() {
+        if (isGameOverState) return
+        isGameOverState = true
+        isProcessing = true
+
         stopEngine()
         dataManager.totalCoins += gameManager.score / 2
         if (gameManager.score > dataManager.highScore) {
@@ -322,8 +309,8 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
     }
 
     private fun triggerMorphing() {
-        if (isProcessing || isBossLevel) return
-        val availableCards = cards.filter { !it.isMatched && !it.isFaceUp && !it.isPowerUp && !it.isFrozen }
+        if (isProcessing || isBossLevel || isGameOverState) return
+        val availableCards = cards.filter { !it.isMatched && !it.isFaceUp && !it.isPowerUp }
         val pairIds = availableCards.map { it.pairId }.distinct()
         if (pairIds.size >= 2) {
             val pairId1 = pairIds.random()
@@ -349,10 +336,11 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
         morphHandler.removeCallbacksAndMessages(null)
         survivalHandler.removeCallbacksAndMessages(null)
         timerHandler.removeCallbacksAndMessages(null)
-        bossFreezeHandler.removeCallbacksAndMessages(null)
     }
 
     private fun showFrenzyMessage(message: String) {
+        if (isGameOverState) return
+
         powerUpTextView?.let {
             it.text = message
             it.visibility = View.VISIBLE
@@ -379,14 +367,7 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
     }
 
     private fun onCardClicked(card: Card) {
-        if (isProcessing || card.isFaceUp || card.isMatched) return
-
-        // Buzlu karta cift tiklama mantiği
-        if (card.isFrozen) {
-            card.unfreeze()
-            soundManager.playIceBreakSound()
-            return
-        }
+        if (isProcessing || card.isFaceUp || card.isMatched || isGameOverState) return
 
         if (firstSelectedCard == card) return
 
@@ -402,6 +383,7 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
     }
 
     private fun checkMatch(card1: Card, card2: Card) {
+        if (isGameOverState) return
         isProcessing = true
         if (card1.pairId == card2.pairId) {
             card1.isMatched = true
@@ -451,6 +433,7 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
             gameManager.resetCombo()
 
             Handler(Looper.getMainLooper()).postDelayed({
+                if (isGameOverState) return@postDelayed
                 soundManager.playMismatchSound()
                 card1.animateMismatch()
                 card2.animateMismatch {
@@ -463,6 +446,8 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
     }
 
     private fun triggerPowerUp(type: String) {
+        if (isGameOverState) return
+
         if (type == "RADAR") {
             showFrenzyMessage("RADAR AKTİF!")
             cards.filter { !it.isMatched && !it.isFaceUp }.forEach {
@@ -493,6 +478,8 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
     }
 
     private fun animateMatchAndApplyGravity(card1: Card, card2: Card) {
+        if (isGameOverState) return
+
         val boardWidth = gameBoard.width
         val boardHeight = gameBoard.height
 
@@ -511,6 +498,7 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
 
         moveAnimatorSet.addListener(object : AnimatorListenerAdapter() {
             override fun onAnimationEnd(animation: Animator) {
+                if (isGameOverState) return
                 card1.setMatchedAndHide()
                 card2.setMatchedAndHide {
                     applyGravity(card1, card2)
@@ -521,6 +509,7 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
     }
 
     private fun applyGravity(matchedCard1: Card, matchedCard2: Card) {
+        if (isGameOverState) return
         val columnsToUpdate = listOf(matchedCard1.gridCol, matchedCard2.gridCol).distinct()
 
         var animationCount = 0
@@ -552,6 +541,7 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
                     animationCount++
                     fallAnim.addListener(object: AnimatorListenerAdapter() {
                         override fun onAnimationEnd(animation: Animator) {
+                            if (isGameOverState) return
                             val lp = card.layoutParams as FrameLayout.LayoutParams
                             lp.topMargin += fallDistance
                             card.layoutParams = lp
@@ -577,7 +567,7 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
     }
 
     private fun checkLevelComplete() {
-        if (gameMode == "SURVIVAL") return
+        if (gameMode == "SURVIVAL" || isGameOverState) return
 
         if (cards.all { it.isMatched }) {
 
@@ -588,6 +578,10 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
 
             gameManager.nextLevel()
             if (gameManager.currentLevel > 14) {
+                // Oyun bitti (Son Leveli Gecti)
+                isGameOverState = true
+                isProcessing = true
+                stopEngine()
                 callback.onGameFinished()
             } else {
                 callback.onLevelChanged(gameManager.currentLevel)

@@ -5,6 +5,8 @@ import android.animation.ValueAnimator
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
@@ -42,6 +44,8 @@ class MainActivity : AppCompatActivity(), GameEngine.GameCallback {
         "#FAFAFA"
     )
 
+    private var isGameOverHandled = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -69,6 +73,8 @@ class MainActivity : AppCompatActivity(), GameEngine.GameCallback {
         gameEngine = GameEngine(this, gameBoard, this)
         gameEngine.powerUpTextView = powerUpTextView
         gameEngine.timerTextView = timerTextView
+        gameEngine.bossBarContainer = bossBarContainer
+        gameEngine.bossProgressBar = findViewById(R.id.bossProgressBar)
 
         if (gameMode == "SURVIVAL") {
             levelTextView.text = "SURVIVAL"
@@ -110,19 +116,34 @@ class MainActivity : AppCompatActivity(), GameEngine.GameCallback {
     }
 
     override fun onGameFinished() {
+        if (isGameOverHandled) return
+        isGameOverHandled = true
+        gameEngine.stopEngine()
         Toast.makeText(this, "Tebrikler! Oyunu tamamladınız.", Toast.LENGTH_LONG).show()
-        goBackToLobby()
+
+        // Bir miktar bekleyip lobiye dönelim ki Toast görünsün ve UI Thread çökmesin
+        Handler(Looper.getMainLooper()).postDelayed({
+            goBackToLobby()
+        }, 1500)
     }
 
     override fun onGameOver(score: Int) {
+        if (isGameOverHandled) return
+        isGameOverHandled = true
+        gameEngine.stopEngine()
         Toast.makeText(this, "OYUN BİTTİ! Skor: $score", Toast.LENGTH_LONG).show()
-        goBackToLobby()
+
+        Handler(Looper.getMainLooper()).postDelayed({
+            goBackToLobby()
+        }, 1500)
     }
 
     private fun goBackToLobby() {
-        val intent = Intent(this, LobbyActivity::class.java)
-        startActivity(intent)
-        finish()
+        if (!isFinishing && !isDestroyed) {
+            val intent = Intent(this, LobbyActivity::class.java)
+            startActivity(intent)
+            finish()
+        }
     }
 
     override fun onDestroy() {
