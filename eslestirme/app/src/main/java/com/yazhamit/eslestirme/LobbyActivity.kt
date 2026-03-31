@@ -14,6 +14,7 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -23,10 +24,12 @@ class LobbyActivity : AppCompatActivity() {
 
     private lateinit var playButton: Button
     private lateinit var survivalButton: Button
+    private lateinit var shopButton: Button
     private lateinit var questsButton: Button
     private lateinit var animatedBackground: FrameLayout
     private lateinit var coinsTextView: TextView
     private lateinit var highScoreTextView: TextView
+    private lateinit var livesTextView: TextView
 
     private val symbols = listOf("★", "♥", "♦", "♣", "♠", "▲", "▼", "◆", "●", "■", "△", "▽", "◇", "○", "□")
     private val handler = Handler(Looper.getMainLooper())
@@ -41,19 +44,24 @@ class LobbyActivity : AppCompatActivity() {
 
         dataManager = DataManager(this)
         dataManager.checkAndResetDailyTasks()
+        dataManager.checkAndRestoreLives()
 
         playButton = findViewById(R.id.playButton)
         survivalButton = findViewById(R.id.survivalButton)
+        shopButton = findViewById(R.id.shopButton)
         questsButton = findViewById(R.id.questsButton)
         animatedBackground = findViewById(R.id.animatedBackground)
         coinsTextView = findViewById(R.id.coinsTextView)
         highScoreTextView = findViewById(R.id.highScoreTextView)
+        livesTextView = findViewById(R.id.livesTextView)
 
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.lobby_main)) { v, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
             insets
         }
+
+        updateUI()
 
         // Play Button Pulse Animation
         val scaleX = ObjectAnimator.ofFloat(playButton, "scaleX", 1f, 1.1f, 1f)
@@ -68,17 +76,15 @@ class LobbyActivity : AppCompatActivity() {
         pulseAnimator.start()
 
         playButton.setOnClickListener {
-            val intent = Intent(this, MainActivity::class.java)
-            intent.putExtra("GAME_MODE", "CLASSIC")
-            startActivity(intent)
-            finish()
+            startGameWithLivesCheck("CLASSIC")
         }
 
         survivalButton.setOnClickListener {
-            val intent = Intent(this, MainActivity::class.java)
-            intent.putExtra("GAME_MODE", "SURVIVAL")
-            startActivity(intent)
-            finish()
+            startGameWithLivesCheck("SURVIVAL")
+        }
+
+        shopButton.setOnClickListener {
+            showShopDialog()
         }
 
         questsButton.setOnClickListener {
@@ -86,8 +92,7 @@ class LobbyActivity : AppCompatActivity() {
             val current = dataManager.dailyMatches
 
             if (current >= totalNeeded) {
-                // TODO: Odulu bir defa almak icin bir flag de tutulabilir
-                Toast.makeText(this, "Günlük Görev Zaten Tamamlandı! \n(50/50 Kart Eşleşti)", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Günlük Görev Tamamlandı! \n(50/50 Kart Eşleşti)", Toast.LENGTH_LONG).show()
             } else {
                 val remaining = totalNeeded - current
                 Toast.makeText(this, "Günlük Görev:\n50 Kart Eşleştir.\nKalan: $remaining\nÖdül: 500 🪙", Toast.LENGTH_LONG).show()
@@ -97,14 +102,80 @@ class LobbyActivity : AppCompatActivity() {
         startFloatingSymbols()
     }
 
+    private fun startGameWithLivesCheck(mode: String) {
+        dataManager.checkAndRestoreLives() // Tekrar kontrol et
+        if (dataManager.lives > 0) {
+            dataManager.lives -= 1
+            updateUI()
+
+            val intent = Intent(this, MainActivity::class.java)
+            intent.putExtra("GAME_MODE", mode)
+            startActivity(intent)
+            finish()
+        } else {
+            Toast.makeText(this, "Canınız bitti! Biraz bekleyin veya mağazadan can alın.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun showShopDialog() {
+        val themes = arrayOf("KLASİK (Ücretsiz)", "HAYVANLAR (1000 🪙)", "MEYVELER (1000 🪙)", "EMOJİLER (1500 🪙)", "CAN DOLDUR (+5 ❤️ / 500 🪙)")
+        val themeKeys = arrayOf("CLASSIC", "ANIMALS", "FRUITS", "EMOJIS", "HEAL")
+        val themePrices = arrayOf(0, 1000, 1000, 1500, 500)
+
+        val builder = AlertDialog.Builder(this)
+        builder.setTitle("Mağaza (Bakiye: ${dataManager.totalCoins} 🪙)")
+
+        builder.setItems(themes) { dialog, which ->
+            val selectedKey = themeKeys[which]
+            val price = themePrices[which]
+
+            if (selectedKey == "HEAL") {
+                if (dataManager.totalCoins >= price) {
+                    if (dataManager.lives < 5) {
+                        dataManager.totalCoins -= price
+                        dataManager.lives = 5
+                        updateUI()
+                        Toast.makeText(this, "Canlar dolduruldu! ❤️", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(this, "Canınız zaten dolu!", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    Toast.makeText(this, "Yetersiz Jeton! 🪙", Toast.LENGTH_SHORT).show()
+                }
+                return@setItems
+            }
+
+            // Tema islemi
+            if (dataManager.isThemeUnlocked(selectedKey)) {
+                dataManager.selectedTheme = selectedKey
+                Toast.makeText(this, "Tema seçildi!", Toast.LENGTH_SHORT).show()
+            } else {
+                if (dataManager.totalCoins >= price) {
+                    dataManager.totalCoins -= price
+                    dataManager.unlockTheme(selectedKey)
+                    dataManager.selectedTheme = selectedKey
+                    updateUI()
+                    Toast.makeText(this, "Tema satın alındı ve seçildi! 🎉", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "Yetersiz Jeton! 🪙", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
+        builder.setNegativeButton("Kapat") { dialog, _ -> dialog.dismiss() }
+        builder.show()
+    }
+
     override fun onResume() {
         super.onResume()
+        dataManager.checkAndRestoreLives()
         updateUI()
     }
 
     private fun updateUI() {
         coinsTextView.text = dataManager.totalCoins.toString()
         highScoreTextView.text = dataManager.highScore.toString()
+        livesTextView.text = "${dataManager.lives}/5"
     }
 
     private fun startFloatingSymbols() {

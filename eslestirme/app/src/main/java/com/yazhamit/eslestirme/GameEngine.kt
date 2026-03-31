@@ -10,26 +10,55 @@ import android.os.Looper
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.TextView
+import android.widget.ProgressBar
+import android.widget.LinearLayout
 import kotlin.math.ceil
 import kotlin.math.sqrt
 import kotlin.random.Random
 
 class GameEngine(private val context: Context, private val gameBoard: FrameLayout, private val callback: GameCallback) {
     private val gameManager = GameManager()
-    private val dataManager = DataManager(context)
+    val dataManager = DataManager(context)
     private val cards = mutableListOf<Card>()
     private var firstSelectedCard: Card? = null
     private var isProcessing = false
 
     val soundManager = SoundManager(context)
 
-    private val cardSymbols = listOf("★", "♥", "♦", "♣", "♠", "▲", "▼", "◆", "●", "■", "△", "▽", "◇", "○", "□")
+    // Temalara Gore Sembol Setleri
+    private val themeClassic = listOf("★", "♥", "♦", "♣", "♠", "▲", "▼", "◆", "●", "■", "△", "▽", "◇", "○", "□")
+    private val themeAnimals = listOf("🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮", "🐷", "🐸", "🐵")
+    private val themeFruits = listOf("🍎", "🍐", "🍊", "🍋", "🍌", "🍉", "🍇", "🍓", "🍈", "🍒", "🍑", "🍍", "🥥", "🥝", "🍅")
+    private val themeEmojis = listOf("😀", "😂", "🥰", "😎", "🤩", "😜", "🤪", "🥺", "🥶", "😱", "🥳", "🤠", "🤡", "👽", "👻")
+
     private val powerUpSymbols = listOf("👁️", "💣")
 
     var powerUpTextView: TextView? = null
+    var timerTextView: TextView? = null
+    var bossBarContainer: LinearLayout? = null
+    var bossProgressBar: ProgressBar? = null
 
-    // Oyun modu: "CLASSIC" veya "SURVIVAL"
     var gameMode: String = "CLASSIC"
+
+    private var isBossLevel = false
+    private var bossMaxHp = 100
+    private var bossCurrentHp = 100
+
+    private var timeLeft: Int = 0
+    private val timerHandler = Handler(Looper.getMainLooper())
+    private val timerRunnable = object : Runnable {
+        override fun run() {
+            if (timeLeft > 0) {
+                timeLeft--
+                timerTextView?.text = "Süre: $timeLeft"
+                if (timeLeft == 0) {
+                    endGame()
+                } else {
+                    timerHandler.postDelayed(this, 1000)
+                }
+            }
+        }
+    }
 
     private val morphHandler = Handler(Looper.getMainLooper())
     private val morphRunnable = object : Runnable {
@@ -39,13 +68,23 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
         }
     }
 
-    // Survival Mod icin saniye basina yukaridan yeni kart ekleme handler'i
     private val survivalHandler = Handler(Looper.getMainLooper())
     private val survivalRunnable = object : Runnable {
         override fun run() {
             if (gameMode == "SURVIVAL") {
                 spawnSurvivalRow()
                 survivalHandler.postDelayed(this, 15000)
+            }
+        }
+    }
+
+    // Boss dondurma handler'i
+    private val bossFreezeHandler = Handler(Looper.getMainLooper())
+    private val bossFreezeRunnable = object : Runnable {
+        override fun run() {
+            if (isBossLevel && bossCurrentHp > 0) {
+                freezeRandomCards()
+                bossFreezeHandler.postDelayed(this, Random.nextLong(6000, 10000))
             }
         }
     }
@@ -68,22 +107,34 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
     private fun loadLevel() {
         gameBoard.removeAllViews()
         cards.clear()
+        stopEngine()
 
-        morphHandler.removeCallbacksAndMessages(null)
-        survivalHandler.removeCallbacksAndMessages(null)
+        // Her 5. Seviye Boss
+        isBossLevel = (gameMode == "CLASSIC" && gameManager.currentLevel % 5 == 0)
 
-        var cardCount = gameManager.getCardCountForLevel()
-
-        if (gameMode == "SURVIVAL") {
-            // Survival mode ekranı tamamen doldurmayacak sekilde (mesela max 20) baslar
-            cardCount = 20
-        }
-
+        val cardCount = if (gameMode == "SURVIVAL") 20 else gameManager.getCardCountForLevel()
         val pairsCount = cardCount / 2
 
+        if (isBossLevel) {
+            bossMaxHp = pairsCount * 10
+            bossCurrentHp = bossMaxHp
+            bossProgressBar?.max = bossMaxHp
+            bossProgressBar?.progress = bossCurrentHp
+            bossBarContainer?.visibility = View.VISIBLE
+        } else {
+            bossBarContainer?.visibility = View.GONE
+        }
+
         var hasPowerUp = false
-        if (gameMode == "CLASSIC" && Random.nextInt(100) < 30 && pairsCount > 3) {
+        if (gameMode == "CLASSIC" && Random.nextInt(100) < 30 && pairsCount > 3 && !isBossLevel) {
             hasPowerUp = true
+        }
+
+        val activeThemeSymbols = when (dataManager.selectedTheme) {
+            "ANIMALS" -> themeAnimals
+            "FRUITS" -> themeFruits
+            "EMOJIS" -> themeEmojis
+            else -> themeClassic
         }
 
         for (i in 0 until pairsCount) {
@@ -101,7 +152,7 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
                 cards.add(pCard1)
                 cards.add(pCard2)
             } else {
-                val symbol = cardSymbols[i % cardSymbols.size]
+                val symbol = activeThemeSymbols[i % activeThemeSymbols.size]
                 cards.add(Card(context, cardId = i * 2, pairId = i, symbol = symbol))
                 cards.add(Card(context, cardId = i * 2 + 1, pairId = i, symbol = symbol))
             }
@@ -120,11 +171,7 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
             val cardWidth = (boardWidth - (columns + 1) * spacing) / columns
             val cardHeight = (boardHeight - (rows + 1) * spacing) / rows
 
-            // Survival'da kartlari ekranin altindan baslayarak doldurmak daha zorlayicidir,
-            // biz simdilik yukaridan dizecegiz ama bosluklari altta birakacagiz
             var currentCardIndex = 0
-
-            // Survival'da son x satırı dolu basalım
             val startRow = if (gameMode == "SURVIVAL") rows - (cards.size / columns) else 0
 
             for (r in startRow until rows) {
@@ -153,29 +200,50 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
                 }
             }
 
-            if (gameMode == "CLASSIC" && gameManager.currentLevel >= 3) {
-                morphHandler.postDelayed(morphRunnable, Random.nextLong(10000, 15000))
+            if (gameMode == "CLASSIC") {
+                timeLeft = gameManager.getTimeLimitForLevel()
+                timerTextView?.text = "Süre: $timeLeft"
+                timerHandler.postDelayed(timerRunnable, 1000)
+
+                if (gameManager.currentLevel >= 3 && !isBossLevel) {
+                    morphHandler.postDelayed(morphRunnable, Random.nextLong(10000, 15000))
+                }
+
+                if (isBossLevel) {
+                    showFrenzyMessage("BOSS GELDİ!")
+                    bossFreezeHandler.postDelayed(bossFreezeRunnable, 5000)
+                }
             }
 
             if (gameMode == "SURVIVAL") {
+                timerTextView?.text = "Süre: ∞"
                 survivalHandler.postDelayed(survivalRunnable, 15000)
             }
         }
     }
 
+    private fun freezeRandomCards() {
+        val availableCards = cards.filter { !it.isMatched && !it.isFaceUp && !it.isFrozen }
+        if (availableCards.size >= 2) {
+            val toFreeze = availableCards.shuffled().take(2)
+            toFreeze.forEach {
+                it.freeze()
+                it.animateMismatch()
+            }
+            soundManager.playMismatchSound()
+        }
+    }
+
     private fun spawnSurvivalRow() {
-        // En ust satira kart ekleme
         val columns = 4
         val rows = 6
 
-        // Eger herhangi bir sutunda ust satirlar (row 0) doluysa oyun biter
         val isGameOver = cards.any { !it.isMatched && it.gridRow == 0 }
         if (isGameOver) {
             endGame()
             return
         }
 
-        // Mevcut kartlari 1 satir asagi kaydir (Dusen blok mantigi)
         val spacing = 16
         val cardHeight = (gameBoard.height - (rows + 1) * spacing) / rows
 
@@ -196,14 +264,20 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
             fallAnim.start()
         }
 
-        // Ust satira (row = 0) yeni 1 satir kart ekle (Mesela 4 sutun)
+        val activeThemeSymbols = when (dataManager.selectedTheme) {
+            "ANIMALS" -> themeAnimals
+            "FRUITS" -> themeFruits
+            "EMOJIS" -> themeEmojis
+            else -> themeClassic
+        }
+
         val newPairs = columns / 2
         val newCards = mutableListOf<Card>()
         val maxId = cards.maxOfOrNull { it.cardId } ?: 0
         val maxPairId = cards.maxOfOrNull { it.pairId } ?: 0
 
         for (i in 0 until newPairs) {
-            val symbol = cardSymbols.random()
+            val symbol = activeThemeSymbols.random()
             val pairId = maxPairId + 1 + i
             newCards.add(Card(context, cardId = maxId + 1 + (i*2), pairId = pairId, symbol = symbol))
             newCards.add(Card(context, cardId = maxId + 2 + (i*2), pairId = pairId, symbol = symbol))
@@ -239,16 +313,17 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
 
     private fun endGame() {
         stopEngine()
-        dataManager.totalCoins += gameManager.score / 2 // Puanlarin yarisi coin olur
+        dataManager.totalCoins += gameManager.score / 2
         if (gameManager.score > dataManager.highScore) {
             dataManager.highScore = gameManager.score
         }
+        soundManager.playGameOverSound()
         callback.onGameOver(gameManager.score)
     }
 
     private fun triggerMorphing() {
-        if (isProcessing) return
-        val availableCards = cards.filter { !it.isMatched && !it.isFaceUp && !it.isPowerUp }
+        if (isProcessing || isBossLevel) return
+        val availableCards = cards.filter { !it.isMatched && !it.isFaceUp && !it.isPowerUp && !it.isFrozen }
         val pairIds = availableCards.map { it.pairId }.distinct()
         if (pairIds.size >= 2) {
             val pairId1 = pairIds.random()
@@ -273,6 +348,8 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
     fun stopEngine() {
         morphHandler.removeCallbacksAndMessages(null)
         survivalHandler.removeCallbacksAndMessages(null)
+        timerHandler.removeCallbacksAndMessages(null)
+        bossFreezeHandler.removeCallbacksAndMessages(null)
     }
 
     private fun showFrenzyMessage(message: String) {
@@ -303,6 +380,14 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
 
     private fun onCardClicked(card: Card) {
         if (isProcessing || card.isFaceUp || card.isMatched) return
+
+        // Buzlu karta cift tiklama mantiği
+        if (card.isFrozen) {
+            card.unfreeze()
+            soundManager.playIceBreakSound()
+            return
+        }
+
         if (firstSelectedCard == card) return
 
         card.flip()
@@ -323,6 +408,18 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
             card2.isMatched = true
             gameManager.addScore()
 
+            if (isBossLevel) {
+                bossCurrentHp -= 10
+                bossProgressBar?.progress = bossCurrentHp
+                soundManager.playBossHitSound()
+                if (bossCurrentHp <= 0) {
+                    showFrenzyMessage("BOSS YENİLDİ!")
+                    cards.forEach { it.isMatched = true }
+                }
+            } else {
+                soundManager.playMatchSound()
+            }
+
             dataManager.dailyMatches += 1
             if (dataManager.dailyMatches == 50) {
                 dataManager.totalCoins += 500
@@ -330,9 +427,10 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
             }
 
             callback.onScoreChanged(gameManager.score)
-            soundManager.playMatchSound()
+
 
             if (gameManager.comboCount > 1) {
+                soundManager.playComboSound()
                 showFrenzyMessage("x${gameManager.comboCount} KOMBO!")
                 if (gameManager.comboCount == 5 && !dataManager.achievementComboX5) {
                     dataManager.achievementComboX5 = true
@@ -479,11 +577,10 @@ class GameEngine(private val context: Context, private val gameBoard: FrameLayou
     }
 
     private fun checkLevelComplete() {
-        if (gameMode == "SURVIVAL") return // Survival bitmez, game over olana kadar
+        if (gameMode == "SURVIVAL") return
 
         if (cards.all { it.isMatched }) {
 
-            // Oyun sonu jeton ve rekor kaydi
             dataManager.totalCoins += gameManager.score / 2
             if (gameManager.score > dataManager.highScore) {
                 dataManager.highScore = gameManager.score

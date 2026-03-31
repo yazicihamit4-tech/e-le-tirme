@@ -9,6 +9,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
@@ -22,6 +23,8 @@ class MainActivity : AppCompatActivity(), GameEngine.GameCallback {
     private lateinit var scoreTextView: TextView
     private lateinit var powerUpTextView: TextView
     private lateinit var soundButton: ImageView
+    private lateinit var timerTextView: TextView
+    private lateinit var bossBarContainer: LinearLayout
     private lateinit var gameEngine: GameEngine
 
     private var currentBgColor = Color.parseColor("#E3F2FD")
@@ -50,6 +53,8 @@ class MainActivity : AppCompatActivity(), GameEngine.GameCallback {
         scoreTextView = findViewById(R.id.scoreTextView)
         soundButton = findViewById(R.id.soundButton)
         powerUpTextView = findViewById(R.id.powerUpTextView)
+        timerTextView = findViewById(R.id.timerTextView)
+        bossBarContainer = findViewById(R.id.bossBarContainer)
 
         mainLayout.setBackgroundColor(currentBgColor)
 
@@ -63,6 +68,7 @@ class MainActivity : AppCompatActivity(), GameEngine.GameCallback {
 
         gameEngine = GameEngine(this, gameBoard, this)
         gameEngine.powerUpTextView = powerUpTextView
+        gameEngine.timerTextView = timerTextView
 
         if (gameMode == "SURVIVAL") {
             levelTextView.text = "SURVIVAL"

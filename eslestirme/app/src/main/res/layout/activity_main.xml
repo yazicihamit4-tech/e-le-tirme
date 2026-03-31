@@ -7,7 +7,6 @@
     android:layout_height="match_parent"
     tools:context=".MainActivity">
 
-    <!-- Üst Bar: Skor, Level ve Ses Göstergeleri -->
     <LinearLayout
         android:id="@+id/topBar"
         android:layout_width="match_parent"
@@ -20,26 +19,71 @@
         android:gravity="center_vertical"
         android:background="#22000000">
 
-        <TextView
-            android:id="@+id/levelTextView"
-            android:layout_width="wrap_content"
+        <!-- Kalan Süre / Level Barı -->
+        <LinearLayout
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:text="Level: 1"
-            android:textSize="22sp"
-            android:textStyle="bold"
-            android:textColor="@android:color/white"
-            android:shadowColor="#000000"
-            android:shadowDx="2"
-            android:shadowDy="2"
-            android:shadowRadius="4"
-            android:layout_weight="1" />
+            android:layout_weight="1"
+            android:orientation="vertical">
 
+            <TextView
+                android:id="@+id/levelTextView"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Level: 1"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:textColor="@android:color/white"
+                android:shadowColor="#000000"
+                android:shadowDx="2"
+                android:shadowDy="2"
+                android:shadowRadius="4" />
+
+            <TextView
+                android:id="@+id/timerTextView"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Süre: ∞"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:textColor="#FFEB3B"
+                android:shadowColor="#000000"
+                android:shadowDx="2"
+                android:shadowDy="2"
+                android:shadowRadius="4" />
+        </LinearLayout>
+
+        <!-- Boss Can Barı (Gizli Olarak Başlar) -->
+        <LinearLayout
+            android:id="@+id/bossBarContainer"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:visibility="gone">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="👹 BOSS"
+                android:textColor="@android:color/white"
+                android:textStyle="bold" />
+            <ProgressBar
+                android:id="@+id/bossProgressBar"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="10dp"
+                android:progress="100"
+                android:progressTint="#F44336" />
+        </LinearLayout>
+
+        <!-- Skor -->
         <TextView
             android:id="@+id/scoreTextView"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:text="Skor: 0"
-            android:textSize="22sp"
+            android:textSize="20sp"
             android:textStyle="bold"
             android:textColor="@android:color/white"
             android:shadowColor="#000000"
@@ -47,7 +91,8 @@
             android:shadowDy="2"
             android:shadowRadius="4"
             android:layout_weight="1"
-            android:gravity="center" />
+            android:gravity="end"
+            android:paddingEnd="8dp" />
 
         <ImageView
             android:id="@+id/soundButton"

@@ -11,19 +11,22 @@ class GameManager {
 
     private var lastMatchTime: Long = 0
 
-    // Maximum kart sayısı
     private val maxCards = 30
 
-    // Her seviye de kart sayısı 4 ile başlayıp 2'şer artacak
     fun getCardCountForLevel(): Int {
         val count = 4 + (currentLevel - 1) * 2
         return if (count > maxCards) maxCards else count
     }
 
+    // Oyun süresi (Saniye): Her kart başına ~2.5 saniye + 10s bonus
+    fun getTimeLimitForLevel(): Int {
+        val count = getCardCountForLevel()
+        return (count * 2.5).toInt() + 10
+    }
+
     fun addScore() {
         val currentTime = System.currentTimeMillis()
 
-        // Eger son eslesmeden itibaren 3 saniye icinde tekrar eslesirse kombo artar
         if (lastMatchTime > 0 && (currentTime - lastMatchTime) <= 3000) {
             comboCount++
         } else {
@@ -32,7 +35,6 @@ class GameManager {
 
         lastMatchTime = currentTime
 
-        // Temel puan 5, kombo ile katlanir. Max kombo x5
         val multiplier = if (comboCount > 5) 5 else comboCount
         score += (5 * multiplier)
     }

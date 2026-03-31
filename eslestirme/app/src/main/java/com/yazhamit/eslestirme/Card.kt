@@ -18,7 +18,9 @@ class Card(context: Context, val cardId: Int, var pairId: Int, var symbol: Strin
     var isPowerUp: Boolean = false
     var powerUpType: String = "" // "RADAR" veya "BOMB"
 
-    // Grid pozisyonlarını tutmak için
+    // Boss mekaniği için (Dondurulmuş kartlar)
+    var isFrozen: Boolean = false
+
     var gridRow: Int = 0
     var gridCol: Int = 0
 
@@ -35,6 +37,18 @@ class Card(context: Context, val cardId: Int, var pairId: Int, var symbol: Strin
         }
 
         addView(textView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+    }
+
+    fun freeze() {
+        if (!isFaceUp && !isMatched) {
+            isFrozen = true
+            setBackgroundColor(Color.CYAN) // Buz rengi
+        }
+    }
+
+    fun unfreeze() {
+        isFrozen = false
+        setBackgroundResource(R.drawable.card_back)
     }
 
     fun flip() {
@@ -68,7 +82,7 @@ class Card(context: Context, val cardId: Int, var pairId: Int, var symbol: Strin
     }
 
     fun peek() {
-        if (isMatched || isFaceUp) return
+        if (isMatched || isFaceUp || isFrozen) return
 
         val peekOut = ObjectAnimator.ofFloat(this, "rotationY", 0f, 90f).setDuration(150)
         val peekIn = ObjectAnimator.ofFloat(this, "rotationY", -90f, 0f).setDuration(150)
@@ -101,9 +115,8 @@ class Card(context: Context, val cardId: Int, var pairId: Int, var symbol: Strin
         peekOut.start()
     }
 
-    // Sembol değiştirme (Morphing) animasyonu (Titreyerek değişir)
     fun morphSymbol(newSymbol: String, newPairId: Int) {
-        if (isMatched || isFaceUp) return
+        if (isMatched || isFaceUp || isFrozen) return
 
         val shake = ObjectAnimator.ofFloat(this, "rotation", 0f, 15f, -15f, 10f, -10f, 0f)
         shake.duration = 500
